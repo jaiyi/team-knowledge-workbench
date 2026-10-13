@@ -1,0 +1,5 @@
+# Replace these placeholders with the actual platform and security owners.
+* @team-knowledge-platform
+/docs/ @team-knowledge-platform
+/packages/contracts/ @team-knowledge-platform
+/infra/ @team-knowledge-platform @team-security

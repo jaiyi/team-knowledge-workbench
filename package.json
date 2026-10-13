@@ -1,0 +1,23 @@
+{
+  "name": "team-knowledge-workbench",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Control plane and runtime contracts for a team Knowledge + Skill workbench.",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "workspaces": ["apps/*", "packages/*"],
+  "dependencies": { "zod": "^4.6.5" },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^5.0.1"
+  }
+}
