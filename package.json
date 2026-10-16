@@ -4,18 +4,28 @@
   "private": true,
   "description": "Control plane and runtime contracts for a team Knowledge + Skill workbench.",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "tsc -p tsconfig.json --noEmit"
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "package:workbench": "tsx scripts/build-workbench-package.ts"
   },
-  "workspaces": ["apps/*", "packages/*"],
-  "dependencies": { "zod": "^4.6.5" },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "dependencies": {
+    "semver": "^7.8.5",
+    "zod": "^4.6.5"
+  },
   "devDependencies": {
     "@types/node": "^24.5.2",
+    "@types/semver": "^7.8.0",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "vitest": "^5.0.1"
