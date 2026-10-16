@@ -136,11 +136,12 @@ Harness session / 业务系统
 11. [Workflow 到 Skill 的生成、测试与发布](./方案/10-Workflow到Skill的生成、测试与发布.md)
 12. [整体工程开发阶段划分](./工程设计/00-整体工程开发阶段划分.md)
 13. [P0 详细工程设计](./工程设计/01-P0详细工程设计.md)
-14. [DeepSeek Harness 能力验证](./验证/03-DeepSeek%20Harness能力验证.md)
-15. [验证材料总览](./验证/README.md)
-16. [平台与 Provider 能力验证](./验证/01-平台与Provider能力验证.md)
-17. [DSH Desktop Workbench 落地与多团队部署验证](./验证/04-DSH%20Desktop%20Workbench落地与多团队部署验证.md)
-18. [DSH Plugin 开发与安装契约验证](./验证/05-DSH%20Plugin开发与安装契约验证.md)
+14. [Knowledge 契约基础切片状态](./工程设计/02-Knowledge契约基础切片状态.md)
+15. [DeepSeek Harness 能力验证](./验证/03-DeepSeek%20Harness能力验证.md)
+16. [验证材料总览](./验证/README.md)
+17. [平台与 Provider 能力验证](./验证/01-平台与Provider能力验证.md)
+18. [DSH Desktop Workbench 落地与多团队部署验证](./验证/04-DSH%20Desktop%20Workbench落地与多团队部署验证.md)
+19. [DSH Plugin 开发与安装契约验证](./验证/05-DSH%20Plugin开发与安装契约验证.md)
 
 验证材料只回答“外部能力实际证明了什么”，工程设计文档回答“我们准备如何实现和验收”。两者都不能把未验证的发布、索引、装载或运行显示为成功。
 
