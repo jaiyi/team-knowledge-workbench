@@ -9,7 +9,7 @@ const identity = {
   package_identity: 'team-knowledge-workbench',
   package_version: '0.1.0',
   source_commit: '0123456789abcdef0123456789abcdef01234567',
-  artifact_digest: `sha256:${'a'.repeat(64)}` as `sha256:${string}`,
+  runtime_identity_digest: `sha256:${'a'.repeat(64)}` as `sha256:${string}`,
 };
 
 const createContext = () => {
@@ -70,25 +70,48 @@ describe('Workbench DSH host plugin', () => {
     expect(registrations[1]).toMatchObject({ kind: 'workbench', lifecycle: 'disposed' });
   });
 
-  it('accepts the artifact digest supplied by the host config', async () => {
-    const { context, registrations } = createContext();
+  it('does not run readiness probes after disposal', async () => {
+    const { context, disposers } = createContext();
+    let probes = 0;
     const plugin = createWorkbenchPlugin({
-      identity: { ...identity, artifact_digest: `sha256:${'b'.repeat(64)}` as `sha256:${string}` },
+      identity,
+      healthProbe: async () => {
+        probes += 1;
+        return { status: 'ok', reference: 'healthy' };
+      },
+    });
+
+    plugin.apply(context);
+    disposers[0]!();
+
+    await expect(plugin.readiness()).resolves.toEqual({
+      status: 'unknown',
+      reference: 'plugin-disposed',
+    });
+    expect(probes).toBe(0);
+  });
+
+  it('accepts the runtime identity digest supplied by the host config', async () => {
+    const { context, registrations } = createContext();
+    const runtimeDigest = `sha256:${'b'.repeat(64)}` as `sha256:${string}`;
+    const plugin = createWorkbenchPlugin({
+      identity: { ...identity, runtime_identity_digest: runtimeDigest },
       healthProbe: async () => ({ status: 'unknown', reference: 'not-configured' }),
     });
 
     plugin.apply(context);
 
     expect(registrations[0]).toMatchObject({
-      identity: { artifact_digest: `sha256:${'b'.repeat(64)}` },
+      identity: { runtime_identity_digest: runtimeDigest },
     });
   });
+
 
   it('rejects an identity with a malformed digest before registration', () => {
     const { context, registrations } = createContext();
 
     expect(() => createWorkbenchPlugin({
-      identity: { ...identity, artifact_digest: 'not-a-digest' as `sha256:${string}` },
+      identity: { ...identity, runtime_identity_digest: 'not-a-digest' as `sha256:${string}` },
       healthProbe: async () => ({ status: 'ok', reference: 'x' }),
     })).toThrow('invalid Workbench package identity');
     expect(registrations).toHaveLength(0);

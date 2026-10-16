@@ -9,7 +9,7 @@ const workbenchIdentitySchema = z.strictObject({
   package_identity: z.string().trim().min(1).max(200),
   package_version: strictSemverSchema,
   source_commit: sourceCommitSchema,
-  artifact_digest: digestSchema,
+  runtime_identity_digest: digestSchema,
 });
 
 export type WorkbenchPluginIdentity = Readonly<z.infer<typeof workbenchIdentitySchema>>;
@@ -72,6 +72,9 @@ export const createWorkbenchPlugin = (options: WorkbenchPluginOptions): Workbenc
         context.register(registration);
       });
     },
-    readiness: options.healthProbe,
+    readiness: async () => {
+      if (disposed) return { status: 'unknown', reference: 'plugin-disposed' };
+      return options.healthProbe();
+    },
   };
 };

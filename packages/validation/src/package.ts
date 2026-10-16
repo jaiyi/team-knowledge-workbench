@@ -17,6 +17,7 @@ export const workbenchPackageManifestSchema = z.strictObject({
   client_entry: safeRelativePath,
   payload_files: z.array(z.strictObject({ path: safeRelativePath, digest })).min(1),
   artifact_digest: digest,
+  runtime_identity_digest: digest,
   contract_evidence_level: z.enum(['fact', 'candidate', 'pending_checks', 'warning']),
 }).superRefine((manifest, context) => {
   const paths = new Set<string>();

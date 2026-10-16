@@ -8,6 +8,11 @@ export type PackageFile = Readonly<{
   content: string;
 }>;
 
+type RuntimeIdentityMetadata = Pick<
+  WorkbenchPackageManifest,
+  'package_identity' | 'package_version' | 'source_commit'
+>;
+
 type ArtifactMetadata = Pick<
   WorkbenchPackageManifest,
   | 'package_identity'
@@ -15,6 +20,7 @@ type ArtifactMetadata = Pick<
   | 'source_commit'
   | 'server_entry'
   | 'client_entry'
+  | 'runtime_identity_digest'
   | 'contract_evidence_level'
 >;
 
@@ -49,6 +55,17 @@ const updatePackageFiles = (
 export const computePackageDigest = (files: readonly PackageFile[]): `sha256:${string}` => {
   const hash = createHash('sha256');
   updatePackageFiles(hash, files);
+  return `sha256:${hash.digest('hex')}`;
+};
+
+export const computeRuntimeIdentityDigest = (
+  metadata: RuntimeIdentityMetadata,
+): `sha256:${string}` => {
+  const hash = createHash('sha256');
+  updateLengthPrefixed(hash, 'workbench-runtime-identity-v1');
+  updateLengthPrefixed(hash, metadata.package_identity);
+  updateLengthPrefixed(hash, metadata.package_version);
+  updateLengthPrefixed(hash, metadata.source_commit);
   return `sha256:${hash.digest('hex')}`;
 };
 

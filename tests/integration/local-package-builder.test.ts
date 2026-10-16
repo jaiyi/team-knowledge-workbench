@@ -26,6 +26,7 @@ describe('local package builder', () => {
     });
 
     expect(first.manifest.artifact_digest).toBe(second.manifest.artifact_digest);
+    expect(first.manifest.runtime_identity_digest).toBe(second.manifest.runtime_identity_digest);
     expect(first.manifest.payload_files).toEqual(second.manifest.payload_files);
     expect(first.manifest.contract_evidence_level).toBe('pending_checks');
   });

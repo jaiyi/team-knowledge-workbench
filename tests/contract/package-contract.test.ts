@@ -14,6 +14,7 @@ const manifest = {
     { path: 'server/index.js', digest },
   ],
   artifact_digest: digest,
+  runtime_identity_digest: digest,
   contract_evidence_level: 'pending_checks',
 };
 

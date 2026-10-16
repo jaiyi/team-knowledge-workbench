@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { lstat, mkdir, open, readFile, readdir, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, open, readdir, writeFile } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
 
 import {
@@ -33,7 +33,20 @@ const artifactPath = (root: string, path: string): string => {
   return candidate;
 };
 
-const readRegularFile = async (path: string): Promise<string> => {
+const assertRegularPath = async (root: string, relativePath: string): Promise<void> => {
+  let current = root;
+  for (const component of relativePath.split('/')) {
+    current = join(current, component);
+    const metadata = await lstat(current);
+    if (metadata.isSymbolicLink()) {
+      throw new Error(`symbolic links are not allowed: ${relativePath}`);
+    }
+  }
+};
+
+const readRegularFile = async (root: string, relativePath: string): Promise<string> => {
+  const path = artifactPath(root, relativePath);
+  await assertRegularPath(root, relativePath);
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const metadata = await handle.stat();
@@ -47,7 +60,7 @@ const readRegularFile = async (path: string): Promise<string> => {
 const readPayloadFiles = async (root: string, paths: readonly string[]): Promise<readonly PackageFile[]> => {
   const files = await Promise.all(paths.map(async (path) => ({
     path,
-    content: await readRegularFile(artifactPath(root, path)),
+    content: await readRegularFile(root, path),
   })));
   return canonicalizePackageFiles(files);
 };
@@ -93,7 +106,8 @@ export const writeLocalPackageArtifact = async (
 
 export const readLocalPackageArtifact = async (outputDirectory: string): Promise<LocalPackageArtifact> => {
   const root = resolve(outputDirectory);
-  const manifest = workbenchPackageManifestSchema.parse(JSON.parse(await readFile(join(root, manifestFileName), 'utf8')));
+  await assertRegularPath(root, manifestFileName);
+  const manifest = workbenchPackageManifestSchema.parse(JSON.parse(await readRegularFile(root, manifestFileName)));
   const files = await readPayloadFiles(root, manifest.payload_files.map((file) => file.path));
   return { manifest, files };
 };

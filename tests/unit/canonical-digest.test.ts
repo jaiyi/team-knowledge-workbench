@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   canonicalizePackageFiles,
+  computeArtifactDigest,
   computePackageDigest,
+  computeRuntimeIdentityDigest,
 } from '../../packages/distribution-adapter/src/canonical-digest.js';
 
 describe('canonical package digest', () => {
@@ -43,6 +45,26 @@ describe('canonical package digest', () => {
         'unsafe package path',
       );
     }
+  });
+
+  it('computes a runtime identity digest from metadata without payload self-reference', () => {
+    const metadata = {
+      package_identity: 'team-knowledge-workbench',
+      package_version: '0.1.0',
+      source_commit: '0123456789abcdef0123456789abcdef01234567',
+    } as const;
+    const runtimeDigest = computeRuntimeIdentityDigest(metadata);
+    const artifactDigest = computeArtifactDigest(files, {
+      ...metadata,
+      server_entry: 'server/index.js',
+      client_entry: 'client/index.js',
+      runtime_identity_digest: runtimeDigest,
+      contract_evidence_level: 'pending_checks',
+    });
+
+    expect(runtimeDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(runtimeDigest).not.toBe(artifactDigest);
+    expect(computeRuntimeIdentityDigest(metadata)).toBe(runtimeDigest);
   });
 
   it('uses deterministic byte ordering for Unicode paths', () => {

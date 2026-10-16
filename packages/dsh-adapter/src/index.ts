@@ -2,24 +2,21 @@ import { z } from 'zod';
 
 import { createWorkbenchPlugin, type WorkbenchPluginContext } from './host-plugin.js';
 
-const artifactConfigSchema = z.strictObject({
-  artifact_digest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+const runtimeIdentityConfigSchema = z.strictObject({
+  runtime_identity_digest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+  package_identity: z.string().min(1),
+  package_version: z.string().min(1),
+  source_commit: z.string().regex(/^[0-9a-f]{40}$/),
 });
 
-const packageIdentity = {
-  package_identity: 'team-knowledge-workbench',
-  package_version: '0.1.0',
-  source_commit: '0123456789abcdef0123456789abcdef01234567',
-};
-
 export const apply = (context: WorkbenchPluginContext, config: unknown): void => {
-  const parsedConfig = artifactConfigSchema.safeParse(config);
+  const parsedConfig = runtimeIdentityConfigSchema.safeParse(config);
   if (!parsedConfig.success) {
-    throw new Error('DSH host must provide the Workbench artifact digest');
+    throw new Error('DSH host must provide the Workbench runtime identity');
   }
 
   const plugin = createWorkbenchPlugin({
-    identity: { ...packageIdentity, artifact_digest: parsedConfig.data.artifact_digest },
+    identity: parsedConfig.data,
     healthProbe: async () => ({ status: 'unknown', reference: 'health-probe-not-configured' }),
   });
   plugin.apply(context);

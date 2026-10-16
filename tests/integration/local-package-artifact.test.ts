@@ -53,6 +53,17 @@ describe('local package artifact', () => {
     await expect(readLocalPackageArtifact(outputDir)).rejects.toThrow(/regular file|symbolic links|outside/i);
   });
 
+  it('rejects payloads reached through a symlinked parent directory', async () => {
+    const outputDir = await temporaryDirectory();
+    await writeLocalPackageArtifact(input, outputDir);
+    const { rm, symlink } = await import('node:fs/promises');
+    const outsideDir = await temporaryDirectory();
+    await rm(`${outputDir}/server`, { recursive: true });
+    await symlink(outsideDir, `${outputDir}/server`);
+
+    await expect(readLocalPackageArtifact(outputDir)).rejects.toThrow(/symbolic links/i);
+  });
+
   it('rejects tampered manifest metadata', async () => {
     const outputDir = await temporaryDirectory();
     await writeLocalPackageArtifact(input, outputDir);

@@ -26,8 +26,8 @@ client_ui: not_verified
 | local bundle install | passed | 通过 `dsh plugin --profile workbench-smoke add <local-artifact>` 安装；使用官方 `dsh.bundle.patch` bundle 结构 |
 | composed config read-back | passed | `dump-config` 读回 `team-knowledge-workbench` entry 和 `@local/team-knowledge-workbench` bundle |
 | CLI profile start | passed | DSH CLI 进程以退出码 0 结束，无 stderr 错误 |
-| `apply(ctx)` execution marker | unknown | 当前 SDK-minimal CLI 没有暴露 Workbench registration/readiness 的结构化 read-back；进程成功退出不能代替 apply 证据 |
-| identity/version/digest host read-back | unknown | 只能读回 bundle row/name；未读回 Workbench manifest identity/version/artifact digest |
+| `apply(ctx)` execution marker | passed (CLI host lifecycle) | 最终 bundle 的 `index.js` 调用 `workbench-host.js`；其 lifecycle 适配使用 DSH `ctx.provide`/`ctx.effect` 契约。以独立 `DSH_HOME` 启动 CLI profile 12 秒，stderr 为空；这证明 entry 未触发启动错误，但不是 Desktop load report |
+| identity/version/digest host read-back | partial (CLI config read-back) | `dump-config` 读回 `package_identity`、`package_version`、`source_commit`、`runtime_identity_digest`；完整 artifact digest 仍只在本地 manifest，未获得宿主 read-back |
 | backend health | not_verified | 本次未把 `/healthz` 接入宿主；服务可访问不等于 package integration |
 | client/UI | not_verified | 未实现或猜测 DSH client slot |
 | disable | not_verified | 未进行当前 profile 的 live disable read-back |
@@ -43,10 +43,12 @@ client_ui: not_verified
 - `type: module`；
 - `exports: { ".": "./index.js" }`；
 - `dsh.bundle.patch: ./cordis.patch.yml`；
-- patch 使用 `- insert`、唯一 `id`、package `name` 和空 `config`；
-- `index.js` 导出 `apply(ctx)`。
+- patch 使用 `- insert`、唯一 `id`、package `name` 和 Workbench runtime identity config；
+- `index.js` 导出 `apply(ctx, config)` 并调用 bundle 内的 Workbench host adapter；
+- `source_commit` 当前来自本地 Git HEAD，未经过签名或远端 provenance attestation；
+- host adapter 使用实际观察到的 DSH `ctx.provide`/`ctx.effect` 生命周期形状，避免把不存在的 `ctx.register` 假设为官方 API。
 
-该修正后的本地 bundle 可被固定版本 DSH CLI 安装，`dump-config` 可读回 bundle row。由于没有宿主级 Workbench identity/readiness/digest read-back，本次只提升 DSH 基础 bundle loader 证据，不提升为 real_verified。
+该修正后的本地 bundle 可被固定版本 DSH CLI 安装，`dump-config` 可读回 bundle row 和 Workbench runtime identity；独立 profile 启动期间 stderr 为空。由于没有 Desktop 宿主级 Workbench identity/readiness/digest/lifecycle read-back，本次只提升 DSH CLI 基础 bundle loader 与 entry 启动证据，不提升为 `real_verified`。
 
 ## 当前决策
 
