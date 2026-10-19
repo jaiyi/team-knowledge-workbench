@@ -9,8 +9,14 @@ const packageManifest = `{
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./index.js" },
-  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+  "exports": { ".": "./index.js", "./client": "./client/index.js" },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "inject": ["@deepseek-ai/dsh-client-ui-layout", "@deepseek-ai/dsh-client-ui-sidebar"]
+    }
+  }
 }\n`;
 
 const buildServerEntry = (sourceCommit: string): string => {
@@ -83,7 +89,43 @@ export function apply(ctx, config) {
 }
 `;
 
-const buildClientEntry = (): string => `export const packageIdentity = '${packageIdentity}';\nexport const client = true;\n`;
+const buildClientEntry = (): string => `window.__ModuleLoader__.load({
+  id: '@local/${packageIdentity}',
+  factory: (require) => {
+    const module = { exports: {} };
+    const React = require('react');
+    const panelId = '${packageIdentity}';
+
+    function WorkbenchPanel() {
+      return React.createElement('main', {
+        style: { padding: 'var(--dsh-frame-top-clearance, 48px) 24px 24px' },
+      },
+        React.createElement('h1', null, panelId),
+        React.createElement('p', null, 'v${packageVersion}'),
+        React.createElement('p', null, '状态：未验证'),
+      );
+    }
+
+    function WorkbenchIcon({ size }) {
+      return React.createElement('span', {
+        style: { fontSize: size, fontWeight: 'bold' },
+        'aria-hidden': 'true',
+      }, 'W');
+    }
+
+    module.exports.inject = ['slots'];
+    module.exports.apply = (ctx) => {
+      ctx.slots.inject('main', () => ctx.slots.register({
+        name: 'main', key: panelId,
+      }, WorkbenchPanel));
+      ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+        name: 'sidebar.panellist', id: panelId, label: 'Team Knowledge Workbench',
+      }, WorkbenchIcon));
+    };
+    return module.exports;
+  },
+});
+`;
 
 const buildCordisRegistration = (sourceCommit: string): string => {
   const runtimeIdentityDigest = computeRuntimeIdentityDigest({
