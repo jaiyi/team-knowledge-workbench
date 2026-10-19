@@ -32,6 +32,10 @@ contract_evidence_level: pending_checks
 
 当前包仍安装在 `desktop` profile 中，本次没有执行 disable、uninstall、rollback 或额外重启。安装方式是指向本机临时构建目录的软链接；该目录若被系统清理，安装会失效，因此这不是正式持久化分发产物。没有把完整宿主配置、token、用户会话或临时绝对路径保存到证据。
 
+## 同日只读复核（用户人工读回）
+
+用户报告 Desktop `0.2.0-rc.2` 中仍可打开面板，显示 `team-knowledge-workbench`、`v0.1.0`、`状态：未验证`；插件详情显示 `@local/team-knowledge-workbench`、`v0.1.0`、“共 1 个 · 1 运行中”，组件 `team-knowledge-workbench` 为“运行中”。用户未看到界面报错，也未在该详情页看到 source commit 或完整 artifact digest 字段。上述均为界面可见信息的人工读回；未取得独立 Host/Client 加载报告或 source/完整 digest 的宿主读回，“未看到报错”不等于已验证错误路径。此轮仅查看界面，没有修改 profile 或重启 Desktop。
+
 ## P0 结论
 
 P0-07 的**最小可见 UI/read-back** 有现有 Desktop profile 的人工证据；状态文案“未验证”是客户端静态标签，不是 backend `/healthz`、身份授权、Provider readiness 或 Workbench 产品健康状态。独立 client load report、fresh-profile 安装、source/digest 宿主读回、失联 degraded、disable、完整卸载及可重复 rollback 尚缺，P0 Workbench product package 和 P0 overall 仍为 `no_go`。后续补项须另行核对用户环境及授权范围，不能从本次可见面板推断通过。
