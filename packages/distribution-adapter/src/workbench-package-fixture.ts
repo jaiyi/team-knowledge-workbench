@@ -29,6 +29,7 @@ const buildServerEntry = (sourceCommit: string): string => {
 
 export const packageIdentity = '${packageIdentity}';
 export const packageVersion = '${packageVersion}';
+export const inject = ['connection'];
 export function apply(ctx, config = {}) {
   const expected = {
     package_identity: packageIdentity,
@@ -41,13 +42,29 @@ export function apply(ctx, config = {}) {
       throw new Error('DSH host Workbench runtime identity mismatch');
     }
   }
-  return workbenchHostApply(ctx, expected);
+  return workbenchHostApply(ctx, { ...expected, backendEndpoint: config.backendEndpoint });
 }
 `;
 };
 
 const hostEntry = `const digestPattern = /^sha256:[0-9a-f]{64}$/;
 const sourceCommitPattern = /^[0-9a-f]{40}$/;
+
+function localHealthUrl(endpoint) {
+  if (typeof endpoint !== 'string') return null;
+  try {
+    const url = new URL(endpoint);
+    if (
+      url.protocol !== 'http:' || url.hostname !== '127.0.0.1' ||
+      !url.port || url.username || url.password || url.search || url.hash ||
+      (url.pathname !== '/' && url.pathname !== '') ||
+      endpoint !== url.origin && endpoint !== url.origin + '/'
+    ) return null;
+    return url.origin + '/healthz';
+  } catch {
+    return null;
+  }
+}
 
 export function apply(ctx, config) {
   if (
@@ -68,22 +85,62 @@ export function apply(ctx, config) {
     source_commit: config.source_commit,
     runtime_identity_digest: config.runtime_identity_digest,
   });
+  let disposed = false;
+  const healthUrl = localHealthUrl(config.backendEndpoint);
+  const probe = async () => {
+    if (disposed) return { status: 'degraded', reference: 'host-disposed' };
+    if (config.backendEndpoint === undefined) {
+      return { status: 'unknown', reference: 'api-not-configured' };
+    }
+    if (!healthUrl) return { status: 'unknown', reference: 'api-endpoint-invalid' };
+    let response;
+    let body;
+    try {
+      response = await fetch(healthUrl, { signal: AbortSignal.timeout(500), redirect: 'manual' });
+      body = await response.text();
+    } catch {
+      return { status: 'degraded', reference: disposed ? 'host-disposed' : 'api-unavailable' };
+    }
+    let valid = false;
+    if (
+      response.status === 200 &&
+      response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() === 'application/json' &&
+      body.length <= 64
+    ) {
+      try {
+        const parsed = JSON.parse(body);
+        valid = parsed !== null && typeof parsed === 'object' &&
+          !Array.isArray(parsed) && Object.keys(parsed).length === 1 && parsed.status === 'ok';
+      } catch {
+        // A malformed response is not a healthy API.
+      }
+    }
+    return disposed ? { status: 'degraded', reference: 'host-disposed' } :
+      valid ? { status: 'ok', reference: 'api-health-reachable' } :
+      { status: 'degraded', reference: 'api-health-invalid' };
+  };
+  const connection = Reflect.get(ctx, 'connection');
+  if (typeof connection?.fetch?.register !== 'function') {
+    throw new Error('DSH host requires Connection fetch service');
+  }
+  connection.fetch.register({
+    path: '/api/team-knowledge-workbench.health',
+    methods: ['GET'],
+    requestBody: 'buffered',
+    fetch: async () => new Response(JSON.stringify(await probe()), {
+      headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    }),
+  });
   const registration = Object.freeze({
     kind: 'workbench',
     identity,
-    readiness: Object.freeze({ status: 'pending' }),
+    readiness: Object.freeze({ status: 'pending', probe }),
     lifecycle: 'active',
   });
   if (typeof ctx.provide === 'function') ctx.provide('workbenchIdentity', registration);
   if (typeof ctx.effect === 'function') {
     ctx.effect(() => () => {
-      if (typeof ctx.provide === 'function') {
-        ctx.provide('workbenchIdentity', Object.freeze({
-          ...registration,
-          readiness: Object.freeze({ status: 'disposed' }),
-          lifecycle: 'disposed',
-        }));
-      }
+      disposed = true;
     }, 'team-knowledge-workbench lifecycle');
   }
 }
@@ -127,17 +184,18 @@ const buildClientEntry = (): string => `window.__ModuleLoader__.load({
 });
 `;
 
-const buildCordisRegistration = (sourceCommit: string): string => {
+const buildCordisRegistration = (sourceCommit: string, backendEndpoint?: string): string => {
   const runtimeIdentityDigest = computeRuntimeIdentityDigest({
     package_identity: packageIdentity,
     package_version: packageVersion,
     source_commit: sourceCommit,
   });
-  return `# Candidate fixture: verify registration fields against the pinned DSH loader before install.\n- insert:\n    - id: ${packageIdentity}\n      name: '@local/${packageIdentity}'\n      config:\n        package_identity: '${packageIdentity}'\n        package_version: '${packageVersion}'\n        source_commit: '${sourceCommit}'\n        runtime_identity_digest: '${runtimeIdentityDigest}'\n`;
+  return `# Candidate fixture: verify registration fields against the pinned DSH loader before install.\n- insert:\n    - id: ${packageIdentity}\n      name: '@local/${packageIdentity}'\n      config:\n        package_identity: '${packageIdentity}'\n        package_version: '${packageVersion}'\n        source_commit: '${sourceCommit}'\n        runtime_identity_digest: '${runtimeIdentityDigest}'\n${backendEndpoint === undefined ? '' : `        backendEndpoint: '${backendEndpoint}'\n`}`;
 };
 
 export type WorkbenchPackageFixtureInput = Readonly<{
   sourceCommit: string;
+  backendEndpoint?: string;
 }>;
 
 export const buildWorkbenchPackageInput = (
@@ -145,6 +203,22 @@ export const buildWorkbenchPackageInput = (
 ): LocalPackageBuildInput => {
   if (!/^[0-9a-f]{40}$/.test(input.sourceCommit)) {
     throw new Error('source commit must be a 40-character lowercase Git commit');
+  }
+  if (input.backendEndpoint !== undefined) {
+    let url: URL;
+    try {
+      url = new URL(input.backendEndpoint);
+    } catch {
+      throw new Error('backend endpoint must be a canonical loopback HTTP origin');
+    }
+    if (
+      url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port ||
+      url.username || url.password || url.search || url.hash ||
+      (url.pathname !== '/' && url.pathname !== '') ||
+      (input.backendEndpoint !== url.origin && input.backendEndpoint !== `${url.origin}/`)
+    ) {
+      throw new Error('backend endpoint must be a canonical loopback HTTP origin');
+    }
   }
 
   return {
@@ -158,7 +232,7 @@ export const buildWorkbenchPackageInput = (
     { path: 'index.js', content: buildServerEntry(input.sourceCommit) },
     { path: 'workbench-host.js', content: hostEntry },
     { path: 'client/index.js', content: buildClientEntry() },
-    { path: 'cordis.patch.yml', content: buildCordisRegistration(input.sourceCommit) },
+    { path: 'cordis.patch.yml', content: buildCordisRegistration(input.sourceCommit, input.backendEndpoint) },
   ],
   };
 };
