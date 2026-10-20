@@ -38,13 +38,27 @@ describe('Workbench artifact source provenance', () => {
   });
 
   it('does not use the caller repository as the Workbench source', async () => {
-    const { directory } = await repository();
+    const { directory, git } = await repository();
+    const callerCommit = (await git('rev-parse', 'HEAD')).stdout.trim();
     const script = fileURLToPath(new URL('../../scripts/build-workbench-package.ts', import.meta.url));
+    const repositoryRoot = fileURLToPath(new URL('../..', import.meta.url));
+    const sourceCommit = (await execFile('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot })).stdout.trim();
     const node = process.execPath;
     const tsx = fileURLToPath(new URL('../../node_modules/tsx/dist/cli.mjs', import.meta.url));
-    await expect(execFile(node, [tsx, script], { cwd: directory })).rejects.toThrow(
-      'Workbench package requires a clean Git working tree',
-    );
+    const sourceStatus = (await execFile('git', ['status', '--porcelain=v1', '--untracked-files=all'], {
+      cwd: repositoryRoot,
+    })).stdout.trim();
+    if (sourceStatus) {
+      await expect(execFile(node, [tsx, script], { cwd: directory })).rejects.toThrow(
+        'Workbench package requires a clean Git working tree',
+      );
+    } else {
+      const { stdout } = await execFile(node, [tsx, script], { cwd: directory });
+      const artifact = JSON.parse(stdout) as { source_commit: string; output_directory: string };
+      directories.push(artifact.output_directory);
+      expect(artifact.source_commit).toBe(sourceCommit);
+      expect(artifact.source_commit).not.toBe(callerCommit);
+    }
   });
 
   it('only accepts an explicit endpoint flag once', () => {
