@@ -152,14 +152,57 @@ const buildClientEntry = (): string => `window.__ModuleLoader__.load({
     const module = { exports: {} };
     const React = require('react');
     const panelId = '${packageIdentity}';
+    const healthPath = 'api/team-knowledge-workbench.health';
 
     function WorkbenchPanel() {
+      const [status, setStatus] = React.useState('未验证');
+      React.useEffect(() => {
+        let disposed = false;
+        let timer;
+        let timeout;
+        let controller;
+        const probe = async () => {
+          controller = new AbortController();
+          timeout = setTimeout(() => controller.abort(), 1500);
+          try {
+            const response = await fetch(healthPath, {
+              credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
+            });
+            if (!response.ok || response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json') {
+              throw new Error('invalid health response');
+            }
+            const result = await response.json();
+            if (disposed) return;
+            if (result && Object.keys(result).length === 2 && result.status === 'ok' && result.reference === 'api-health-reachable') {
+              setStatus('本机 API 可达（不代表业务就绪）');
+            } else if (result && Object.keys(result).length === 2 && result.status === 'degraded' && result.reference === 'api-unavailable') {
+              setStatus('本机 API 不可达');
+            } else if (result && Object.keys(result).length === 2 && result.status === 'unknown' && result.reference === 'api-not-configured') {
+              setStatus('本机 API 未配置');
+            } else {
+              setStatus('本机 API 无法验证');
+            }
+          } catch {
+            if (!disposed) setStatus('本机 API 无法验证');
+          } finally {
+            clearTimeout(timeout);
+            if (!disposed) timer = setTimeout(probe, 3000);
+          }
+        };
+        probe();
+        return () => {
+          disposed = true;
+          clearTimeout(timer);
+          clearTimeout(timeout);
+          controller?.abort();
+        };
+      }, []);
       return React.createElement('main', {
         style: { padding: 'var(--dsh-frame-top-clearance, 48px) 24px 24px' },
       },
         React.createElement('h1', null, panelId),
         React.createElement('p', null, 'v${packageVersion}'),
-        React.createElement('p', null, '状态：未验证'),
+        React.createElement('p', null, '状态：' + status),
       );
     }
 

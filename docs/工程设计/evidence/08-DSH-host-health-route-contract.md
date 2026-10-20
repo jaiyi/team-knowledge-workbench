@@ -1,6 +1,6 @@
 # DSH Desktop 0.2.0-rc.2 Host 健康读回候选契约（2026-10-19）
 
-> 只读核查本机随包实现，并在仓库中运行本地替身测试。**未**打包新产物、安装或重启 Desktop，未验证第三方 bundle 在 Desktop 的 HTTP carrier/session 认证路径。本文不是 Workbench readiness 官方服务确认，也不是 P0-09 通过证据。
+> 只读核查本机随包实现，并在仓库中运行本地替身测试。本文撰写时**未**打包新产物；后续在干净 `main` 上完成的无 endpoint 本地构建见 [09 构建记录](./09-Workbench-health-candidate-local-build.md)，隔离 CLI Web Host 与 Desktop 的独立读回见 [10](./10-DSH-isolated-web-host-health-smoke.md)、[11](./11-DSH-isolated-desktop-health-readback.md)。本文原始契约核查不是 Workbench readiness 官方服务确认，也不是 P0-09 整项通过证据。
 
 ## 随包依据
 
@@ -20,4 +20,4 @@
 
 生成 Host 声明 `inject = ['connection']`，借用宿主 Connection 的 `fetch.register` 以唯一 `/api/team-knowledge-workbench.health` GET 路径调用现有受限 loopback `/healthz` probe，仅返回固定 `status/reference` 和 `Cache-Control: no-store`，不暴露身份 digest、API 正文或凭据。没有自行监听端口。缺少 Connection service 时拒绝初始化，不将缺失误报为 healthy；已注册路由依赖宿主 fiber 清理，不在卸载时重注册。默认不配置 endpoint 的结果仍为 `unknown`，可达/断连/恢复只表示 API 进程状态。
 
-`tests/contract/workbench-package-fixture.test.ts` 使用**替身 registry**检查 route 形状、仅 GET、默认状态、可达→断连→恢复、卸载后的 route 移除、进行中请求不能报迟到成功和卸载时不重复注册 Host service。替身不能证明 DSH 真实 session 认证、Host 的 `connection` 注入、route 实际可达或 UI 状态变化。Client 仍显示静态“状态：未验证”；真实 Desktop 读回及动态 UI 留待分门验证。P0-09 保持 `partial`，P0 总体仍为 `no_go`。
+`tests/contract/workbench-package-fixture.test.ts` 使用**替身 registry**检查 route 形状、仅 GET、默认状态、可达→断连→恢复、卸载后的 route 移除、进行中请求不能报迟到成功和卸载时不重复注册 Host service。替身本身不能证明 DSH 真实 session 认证、Host 的 `connection` 注入、route 实际可达或 UI 状态变化；后续[隔离 CLI Web Host](./10-DSH-isolated-web-host-health-smoke.md)和[隔离 Desktop](./11-DSH-isolated-desktop-health-readback.md)分别取得真实的健康 route 状态读回，但不证明卸载生命周期、完整 digest 宿主读回或动态 UI。Client 仍显示静态“状态：未验证”；安全状态桥留待分片开发与验证。P0-09 保持 `partial`，P0 总体仍为 `no_go`。

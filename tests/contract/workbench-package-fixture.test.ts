@@ -313,11 +313,15 @@ describe('Workbench package fixture', () => {
         expect(id).toBe('@local/team-knowledge-workbench');
         clientModule = factory((name) => {
           if (name !== 'react') throw new Error(`unexpected client dependency: ${name}`);
-          return { createElement: (tag: string, props: Record<string, unknown>, ...children: unknown[]) => {
-            const element = { tag, props, children };
-            elements.push(element);
-            return element;
-          } };
+          return {
+            createElement: (tag: string, props: Record<string, unknown>, ...children: unknown[]) => {
+              const element = { tag, props, children };
+              elements.push(element);
+              return element;
+            },
+            useState: (initial: string) => [initial, () => {}],
+            useEffect: () => {},
+          };
         });
       } } },
     });
@@ -340,6 +344,100 @@ describe('Workbench package fixture', () => {
     expect(elements.some((element) => element.children.includes('v0.1.0'))).toBe(true);
     expect(elements.some((element) => element.children.some((child) => typeof child === 'string' && child.includes('未验证')))).toBe(true);
     expect(client).not.toContain('desktopWorkbenches.register');
+  });
+
+  it('shows only fixed API reachability labels and retries without overlapping requests', async () => {
+    const built = buildLocalPackage(buildWorkbenchPackageInput({
+      sourceCommit: '0123456789abcdef0123456789abcdef01234567',
+    }));
+    const client = built.files.find((file) => file.path === 'client/index.js')?.content ?? '';
+    let panel: (() => unknown) | undefined;
+    let effect: (() => (() => void)) | undefined;
+    let state = '';
+    let retry: (() => void) | undefined;
+    let timeout: (() => void) | undefined;
+    const requests: Array<{ path: string; options: RequestInit; resolve: (response: Response) => void; reject: (error: Error) => void }> = [];
+    let clientModule: { apply?: (ctx: unknown) => void } = {};
+    runInNewContext(client, {
+      window: { __ModuleLoader__: { load: ({ factory }: { factory: (require: (name: string) => unknown) => typeof clientModule }) => {
+        clientModule = factory(() => ({
+          createElement: (_tag: string, _props: unknown, ...children: unknown[]) => children,
+          useState: (initial: string) => [state || initial, (next: string) => { state = next; }],
+          useEffect: (callback: () => (() => void)) => { effect = callback; },
+        }));
+      } } },
+      fetch: (path: string, options: RequestInit) => new Promise<Response>((resolve, reject) => {
+        requests.push({ path, options, resolve, reject });
+      }),
+      AbortController,
+      setTimeout: (callback: () => void, duration: number) => {
+        if (duration === 1500) { timeout = callback; return 1; }
+        retry = callback;
+        return 2;
+      },
+      clearTimeout: (id: number) => {
+        if (id === 1) timeout = undefined;
+        if (id === 2) retry = undefined;
+      },
+    });
+    clientModule.apply?.({ slots: {
+      inject: (_name: string, register: () => unknown) => register(),
+      register: (options: { name: string }, component: () => unknown) => {
+        if (options.name === 'main') panel = component;
+        return () => {};
+      },
+    } });
+    const label = () => JSON.stringify(panel?.());
+    const tick = async (count: number) => {
+      await vi.waitFor(() => expect(retry).toBeDefined());
+      const next = retry;
+      retry = undefined;
+      next?.();
+      await vi.waitFor(() => expect(requests).toHaveLength(count));
+      expect(timeout).toBeDefined();
+      expect(retry).toBeUndefined();
+    };
+    expect(label()).toContain('未验证');
+    const dispose = effect?.();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.path).toBe('api/team-knowledge-workbench.health');
+    expect(requests[0]?.options).toMatchObject({ credentials: 'same-origin', cache: 'no-store' });
+    expect(timeout).toBeDefined();
+    expect(retry).toBeUndefined();
+    requests[0]?.resolve(new Response('{"status":"ok","reference":"api-health-reachable"}', { headers: { 'content-type': 'application/json' } }));
+    await vi.waitFor(() => expect(label()).toContain('本机 API 可达'));
+    expect(timeout).toBeUndefined();
+    expect(label()).not.toContain('业务已就绪');
+    await tick(2);
+    expect(requests).toHaveLength(2);
+    requests[1]?.resolve(new Response('{"status":"degraded","reference":"api-unavailable"}', { headers: { 'content-type': 'application/json' } }));
+    await vi.waitFor(() => expect(label()).toContain('本机 API 不可达'));
+    await tick(3);
+    requests[2]?.resolve(new Response('{"status":"unknown","reference":"api-not-configured"}', { headers: { 'content-type': 'application/json' } }));
+    await vi.waitFor(() => expect(label()).toContain('本机 API 未配置'));
+    await tick(4);
+    requests[3]?.resolve(new Response('{"status":"ok","reference":"api-health-reachable"}', { headers: { 'content-type': 'application/json' } }));
+    await vi.waitFor(() => expect(label()).toContain('本机 API 可达'));
+    await tick(5);
+    requests[4]?.resolve(new Response('{"status":"ok","reference":"untrusted-raw-secret"}', { headers: { 'content-type': 'application/json' } }));
+    await vi.waitFor(() => expect(label()).toContain('本机 API 无法验证'));
+    expect(label()).not.toContain('untrusted-raw-secret');
+    await tick(6);
+    requests[5]?.resolve(new Response('{"status":"ok","reference":"api-health-reachable"}', { status: 401 }));
+    await vi.waitFor(() => expect(label()).toContain('本机 API 无法验证'));
+    await tick(7);
+    requests[6]?.reject(new Error('untrusted-raw-secret'));
+    await vi.waitFor(() => expect(retry).toBeDefined());
+    expect(label()).not.toContain('untrusted-raw-secret');
+    await tick(8);
+    const beforeUnload = label();
+    dispose?.();
+    expect((requests[7]?.options.signal as AbortSignal).aborted).toBe(true);
+    requests[7]?.resolve(new Response('{"status":"ok","reference":"api-health-reachable"}', { headers: { 'content-type': 'application/json' } }));
+    await Promise.resolve();
+    expect(label()).toBe(beforeUnload);
+    expect(timeout).toBeUndefined();
+    expect(retry).toBeUndefined();
   });
 
   it('rejects a source commit that could alter generated module syntax', () => {
