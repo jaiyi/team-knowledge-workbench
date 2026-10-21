@@ -52,6 +52,21 @@ describe('fake Git contract (local fixtures only)', () => {
     expect(git.mergeCount()).toBe(2);
   });
 
+  it('does not treat a historical fake merge as the current protected head', () => {
+    const git = createFakeGit('repo-a', path);
+    git.merge(event);
+    expect(git.readCurrentMerge(event.eventId)?.commit_sha).toBe(commit);
+    const next = { ...event, eventId: 'event-2', parentCommitSha: commit, commitSha: 'f'.repeat(40) };
+    git.merge(next);
+    expect(git.readMerge(event.eventId)?.commit_sha).toBe(commit);
+    expect(git.readCurrentMerge(event.eventId)).toBeNull();
+    expect(git.readCurrentMerge(next.eventId)?.commit_sha).toBe(next.commitSha);
+    const returnToFirst = { ...event, eventId: 'event-3', parentCommitSha: next.commitSha };
+    git.merge(returnToFirst);
+    expect(git.readCurrentMerge(event.eventId)).toBeNull();
+    expect(git.readCurrentMerge(returnToFirst.eventId)?.commit_sha).toBe(commit);
+  });
+
   it('records one merge event and uses its independent read-back for publishing', () => {
     const git = createFakeGit('repo-a', path);
     git.merge(event);
@@ -64,7 +79,7 @@ describe('fake Git contract (local fixtures only)', () => {
     expect(git.mergeCount()).toBe(1);
     expect(git.readMerge('missing')).toBeNull();
 
-    const evidence = git.readMerge(event.eventId);
+    const evidence = git.readCurrentMerge(event.eventId);
     expect(evidence).not.toBeNull();
     const knowledge = makeApproved();
     const result = transitionKnowledge(knowledge, {

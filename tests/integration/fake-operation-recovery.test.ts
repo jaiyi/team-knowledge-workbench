@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -47,6 +49,299 @@ afterEach(() => {
 });
 
 describe('isolated durable fake operation recovery', () => {
+  it('commits fake event and operation together across a process boundary', () => {
+    const path = databasePath();
+    const first = spawnSync(process.execPath, [
+      '--import', 'tsx', '--input-type=module', '-e', `
+        import { createFakeDurableOperation } from './tests/support/fake-durable-operation.ts';
+        const store = createFakeDurableOperation(process.argv[1]);
+        store.recordEvent('event-1', JSON.parse(process.argv[2]));
+        process.exit(0);
+      `, path, JSON.stringify(metadata),
+    ], { cwd: process.cwd(), encoding: 'utf8' });
+    expect(first.status).toBe(0);
+
+    const recovered = createFakeDurableOperation(path);
+    expect(recovered.readEvent('event-1')).toBe('op-1');
+    expect(recovered.read('op-1')).toMatchObject({ status: 'queued', ...metadata });
+    recovered.close();
+  });
+
+  it('reopens a committed synthetic ingest request in a new process for fake recovery', () => {
+    const path = databasePath();
+    const first = spawnSync(process.execPath, [
+      '--import', 'tsx', '--input-type=module', '-e', `
+        import { createFakeDurableOperation } from './tests/support/fake-durable-operation.ts';
+        const store = createFakeDurableOperation(process.argv[1]);
+        store.recordEvent('event-1', JSON.parse(process.argv[2]), JSON.parse(process.argv[3]));
+        process.exit(0);
+      `, path, JSON.stringify(metadata), JSON.stringify(request),
+    ], { cwd: process.cwd(), encoding: 'utf8' });
+    expect(first.status).toBe(0);
+
+    const recovered = createFakeDurableOperation(path);
+    expect(recovered.readEvent('event-1')).toBe('op-1');
+    expect(recovered.readRequest('op-1')).toEqual(request);
+    const lease = recovered.claim('op-1', 'lease-b', 100, 10)!;
+    const provider = createFakeWeKnora();
+    const persisted = recovered.readRequest(lease.operationId)!;
+    expect(provider.inspect(lease.operationId)).toBeNull();
+    expect(provider.ingest(persisted).status).toBe('waiting_readback');
+    expect(recovered.markWaiting(lease.operationId, 'lease-b', lease.version, 101)?.status)
+      .toBe('waiting_readback');
+    expect(provider.operationCount()).toBe(1);
+    recovered.close();
+  });
+
+  it.each(['verified', 'mismatch'] as const)(
+    'recovers a claimed fake request after process exit with %s read-back', (outcome) => {
+      const path = databasePath();
+      const first = spawnSync(process.execPath, [
+        '--import', 'tsx', '--input-type=module', '-e', `
+          import { createFakeDurableOperation } from './tests/support/fake-durable-operation.ts';
+          const store = createFakeDurableOperation(process.argv[1]);
+          store.recordEvent('event-1', JSON.parse(process.argv[2]), JSON.parse(process.argv[3]));
+          if (!store.claim('op-1', 'lease-a', 100, 10)) process.exit(1);
+          process.exit(0);
+        `, path, JSON.stringify(metadata), JSON.stringify(request),
+      ], { cwd: process.cwd(), encoding: 'utf8' });
+      expect(first.status).toBe(0);
+
+      const recovered = createFakeDurableOperation(path);
+      expect(recovered.readEvent('event-1')).toBe('op-1');
+      expect(recovered.read('op-1')).toMatchObject({ status: 'running', version: 1 });
+      expect(recovered.claim('op-1', 'lease-b', 109, 10)).toBeNull();
+      const lease = recovered.claim('op-1', 'lease-b', 110, 10)!;
+      expect(lease).toMatchObject({ status: 'running', version: 2 });
+      expect(recovered.markWaiting('op-1', 'lease-a', 1, 111)).toBeNull();
+
+      const provider = createFakeWeKnora();
+      expect(provider.inspect(lease.operationId)).toBeNull();
+      expect(provider.ingest(recovered.readRequest(lease.operationId)!).status).toBe('waiting_readback');
+      const waiting = recovered.markWaiting(lease.operationId, 'lease-b', lease.version, 111)!;
+      const observed = outcome === 'verified' ? readback : { ...readback, asset_space_id: 'space-other' };
+      const status = outcome === 'verified' ? 'succeeded' : 'reconciling';
+      expect(provider.complete(lease.operationId, observed, retrieval).status).toBe(status);
+      expect(provider.readEvidence(lease.operationId).map((item) => item.kind))
+        .toEqual(outcome === 'verified' ? ['weknora_readback', 'retrieval_smoke'] : []);
+      expect(recovered.markReconciled(lease.operationId, 'lease-b', waiting.version, 112, status)?.status)
+        .toBe(status);
+      expect(provider.operationCount()).toBe(1);
+      recovered.close();
+
+      const reopened = createFakeDurableOperation(path);
+      expect(reopened.read('op-1')?.status).toBe(status);
+      expect(reopened.readRequest('op-1')).toEqual(request);
+      if (outcome === 'verified') expect(reopened.claim('op-1', 'lease-c', 120, 10)).toBeNull();
+      reopened.close();
+    },
+  );
+
+  it.each(['verified', 'mismatch'] as const)(
+    'inspects an accepted fake ingest before retrying after process exit with %s read-back', (outcome) => {
+      const path = databasePath();
+      const provider = createFakeWeKnora();
+      const first = createFakeDurableOperation(path);
+      first.recordEvent('event-1', metadata, request);
+      first.close();
+
+      const claimed = spawnSync(process.execPath, [
+        '--import', 'tsx', '--input-type=module', '-e', `
+          import { createFakeDurableOperation } from './tests/support/fake-durable-operation.ts';
+          const store = createFakeDurableOperation(process.argv[1]);
+          if (!store.claim('op-1', 'lease-a', 100, 10)) process.exit(1);
+          process.exit(0);
+        `, path,
+      ], { cwd: process.cwd(), encoding: 'utf8' });
+      expect(claimed.status).toBe(0);
+
+      // The in-memory fake represents an already-accepted external operation, not a restarted provider.
+      expect(provider.ingest(request).status).toBe('waiting_readback');
+      const recovered = createFakeDurableOperation(path);
+      expect(recovered.readRequest('op-1')).toEqual(request);
+      const lease = recovered.claim('op-1', 'lease-b', 110, 10)!;
+      expect(lease).toMatchObject({ status: 'running', version: 2 });
+      expect(recovered.markWaiting('op-1', 'lease-a', 1, 111)).toBeNull();
+      expect(provider.inspect(lease.operationId)?.status).toBe('waiting_readback');
+      const waiting = recovered.markWaiting(lease.operationId, 'lease-b', lease.version, 111)!;
+      expect(provider.operationCount()).toBe(1);
+
+      provider.timeout(lease.operationId);
+      const unknown = recovered.markUnknown(lease.operationId, 'lease-b', waiting.version, 112)!;
+      expect(unknown.status).toBe('unknown');
+      expect(provider.inspect(lease.operationId)?.status).toBe('unknown');
+      expect(provider.readEvidence(lease.operationId).some((item) => item.kind === 'weknora_readback'))
+        .toBe(false);
+      const observed = outcome === 'verified' ? readback : { ...readback, asset_space_id: 'space-other' };
+      const status = outcome === 'verified' ? 'succeeded' : 'reconciling';
+      expect(provider.reconcile(lease.operationId, observed, retrieval).status).toBe(status);
+      expect(provider.readEvidence(lease.operationId).map((item) => item.kind))
+        .toEqual(outcome === 'verified' ? ['weknora_readback', 'retrieval_smoke'] : []);
+      expect(recovered.markReconciled(lease.operationId, 'lease-b', unknown.version, 113, status)?.status)
+        .toBe(status);
+      expect(provider.operationCount()).toBe(1);
+      recovered.close();
+
+      const reopened = createFakeDurableOperation(path);
+      expect(reopened.read('op-1')?.status).toBe(status);
+      reopened.close();
+    },
+  );
+
+  it('replays the same fake event without resetting its lease or re-sending ingest', () => {
+    const path = databasePath();
+    const provider = createFakeWeKnora();
+    const first = createFakeDurableOperation(path);
+    first.recordEvent('event-1', metadata, request);
+    const lease = first.claim('op-1', 'lease-a', 100, 10)!;
+    provider.ingest(first.readRequest('op-1')!);
+    first.close();
+
+    const recovered = createFakeDurableOperation(path);
+    expect(recovered.recordEvent('event-1', metadata, request)).toMatchObject({
+      status: 'running', version: lease.version, leaseToken: 'lease-a',
+    });
+    expect(recovered.readEvent('event-1')).toBe('op-1');
+    expect(recovered.claim('op-1', 'lease-b', 109, 10)).toBeNull();
+    expect(provider.inspect('op-1')?.status).toBe('waiting_readback');
+    expect(provider.operationCount()).toBe(1);
+    expect(() => recovered.recordEvent('event-1', metadata)).toThrow('Conflicting fake durable request');
+    expect(recovered.readRequest('op-1')).toEqual(request);
+    recovered.close();
+  });
+
+  it('rejects a persisted synthetic request whose content no longer matches its operation fingerprint', () => {
+    const path = databasePath();
+    const store = createFakeDurableOperation(path);
+    store.recordEvent('event-1', metadata, request);
+    store.close();
+
+    const db = new DatabaseSync(path);
+    db.prepare('UPDATE fake_operations SET request_json = ? WHERE operation_id = ?')
+      .run(JSON.stringify({ ...request, correlationId: 'correlation-other' }), 'op-1');
+    db.close();
+
+    const recovered = createFakeDurableOperation(path);
+    expect(() => recovered.readRequest('op-1')).toThrow('Conflicting fake durable request');
+    recovered.close();
+  });
+
+  it('rejects a mismatched synthetic request before recording an event or operation', () => {
+    const path = databasePath();
+    const store = createFakeDurableOperation(path);
+    expect(() => store.recordEvent('event-1', metadata, {
+      ...request, asset: { ...asset, asset_revision: 2 },
+    })).toThrow('Conflicting fake durable request');
+    expect(store.readEvent('event-1')).toBeNull();
+    expect(store.read('op-1')).toBeNull();
+    expect(store.readRequest('op-1')).toBeNull();
+    store.close();
+  });
+
+  it('does not retrofit a synthetic request onto an existing metadata-only operation', () => {
+    const path = databasePath();
+    const store = createFakeDurableOperation(path);
+    store.enqueue(metadata);
+    expect(() => store.recordEvent('event-1', metadata, request))
+      .toThrow('Conflicting fake durable request');
+    expect(store.readEvent('event-1')).toBeNull();
+    expect(store.readRequest('op-1')).toBeNull();
+    expect(store.read('op-1')).toMatchObject(metadata);
+    store.close();
+  });
+
+  it('does not retain either fake record when a process exits before commit', () => {
+    const path = databasePath();
+    const first = spawnSync(process.execPath, [
+      '--import', 'tsx', '--input-type=module', '-e', `
+        import { DatabaseSync } from 'node:sqlite';
+        import { createFakeDurableOperation } from './tests/support/fake-durable-operation.ts';
+        createFakeDurableOperation(process.argv[1]).close();
+        const db = new DatabaseSync(process.argv[1]);
+        const metadata = JSON.parse(process.argv[2]);
+        db.exec('BEGIN');
+        db.prepare(\`INSERT INTO fake_operations
+          (operation_id, idempotency_key, fingerprint, request_json, correlation_id, knowledge_id, asset_revision, status, version)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', 0)\`)
+          .run(metadata.operationId, metadata.idempotencyKey, metadata.fingerprint, process.argv[3],
+            metadata.correlationId, metadata.knowledgeId, metadata.assetRevision);
+        db.prepare('INSERT INTO fake_events (event_id, operation_id) VALUES (?, ?)')
+          .run('event-1', metadata.operationId);
+        process.exit(0);
+      `, path, JSON.stringify(metadata), JSON.stringify(request),
+    ], { cwd: process.cwd(), encoding: 'utf8' });
+    expect(first.status).toBe(0);
+
+    const recovered = createFakeDurableOperation(path);
+    expect(recovered.readEvent('event-1')).toBeNull();
+    expect(recovered.read('op-1')).toBeNull();
+    expect(recovered.readRequest('op-1')).toBeNull();
+    recovered.close();
+  });
+
+  it('rejects a conflicting operation identity without recording a new fake event', () => {
+    const path = databasePath();
+    const store = createFakeDurableOperation(path);
+    store.recordEvent('event-1', metadata);
+    expect(() => store.recordEvent('event-2', { ...metadata, fingerprint: 'different' })).toThrow();
+    expect(store.readEvent('event-2')).toBeNull();
+    expect(store.readEvent('event-1')).toBe('op-1');
+    expect(store.read('op-1')).toMatchObject(metadata);
+    store.close();
+
+    const recovered = createFakeDurableOperation(path);
+    expect(recovered.readEvent('event-2')).toBeNull();
+    expect(recovered.readEvent('event-1')).toBe('op-1');
+    expect(recovered.read('op-1')).toMatchObject(metadata);
+    recovered.close();
+  });
+
+  it('rolls back a new fake operation when the event ID already exists', () => {
+    const path = databasePath();
+    const store = createFakeDurableOperation(path);
+    store.recordEvent('event-1', metadata, request);
+    const otherRequest = { ...request, operationId: 'op-2', idempotencyKey: 'key-2' };
+    const other = {
+      ...metadata, operationId: 'op-2', idempotencyKey: 'key-2',
+      fingerprint: `sha256:${createHash('sha256').update(JSON.stringify(otherRequest)).digest('hex')}`,
+    };
+    expect(() => store.recordEvent('event-1', other, otherRequest)).toThrow();
+    expect(store.read('op-2')).toBeNull();
+    expect(store.readRequest('op-2')).toBeNull();
+    expect(store.readEvent('event-1')).toBe('op-1');
+    store.close();
+
+    const recovered = createFakeDurableOperation(path);
+    expect(recovered.read('op-2')).toBeNull();
+    expect(recovered.readRequest('op-2')).toBeNull();
+    expect(recovered.readEvent('event-1')).toBe('op-1');
+    recovered.close();
+  });
+
+  it('recovers a claimed lease after a separate worker process exits without closing its store', () => {
+    const path = databasePath();
+    const first = spawnSync(process.execPath, [
+      '--import', 'tsx', '--input-type=module', '-e', `
+        import { createFakeDurableOperation } from './tests/support/fake-durable-operation.ts';
+        const store = createFakeDurableOperation(process.argv[1]);
+        store.enqueue(JSON.parse(process.argv[2]));
+        if (!store.claim('op-1', 'lease-a', 100, 10)) process.exit(1);
+        process.exit(0);
+      `, path, JSON.stringify(metadata),
+    ], { cwd: process.cwd(), encoding: 'utf8' });
+    expect(first.status).toBe(0);
+
+    const recovered = createFakeDurableOperation(path);
+    expect(recovered.read('op-1')).toMatchObject({ status: 'running', version: 1 });
+    expect(recovered.claim('op-1', 'lease-b', 109, 10)).toBeNull();
+    const lease = recovered.claim('op-1', 'lease-b', 110, 10);
+    expect(lease).toMatchObject({ status: 'running', version: 2 });
+    expect(recovered.markWaiting('op-1', 'lease-a', 1, 111)).toBeNull();
+    expect(recovered.markWaiting('op-1', 'lease-b', lease!.version, 111))
+      .toMatchObject({ status: 'waiting_readback', version: 3 });
+    recovered.close();
+  });
+
   it('reopens a queued operation and rejects conflicting idempotency or operation identity', () => {
     const path = databasePath();
     const first = createFakeDurableOperation(path);

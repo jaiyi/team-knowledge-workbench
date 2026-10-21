@@ -88,6 +88,17 @@ describe('fake WeKnora operation/read-back (local fixtures only)', () => {
     expect(transitionKnowledge(asset, command('published', weknora.readEvidence('op-1'))).ok).toBe(false);
   });
 
+  it.each([
+    { knowledge_id: 'knowledge.other' }, { version: '2.0.0' }, { asset_revision: 2 },
+  ])('does not publish mismatched retrieval %j', (mismatch) => {
+    const weknora = createFakeWeKnora();
+    weknora.ingest(request);
+    expect(weknora.complete('op-1', readback, { ...retrieval, ...mismatch }))
+      .toEqual({ operation_id: 'op-1', status: 'reconciling' });
+    expect(weknora.readEvidence('op-1')).toEqual([]);
+    expect(transitionKnowledge(asset, command('published', weknora.readEvidence('op-1'))).ok).toBe(false);
+  });
+
   it('rejects changed evidence after success and does not expose mutable read-back state', () => {
     const weknora = createFakeWeKnora();
     weknora.ingest(request);

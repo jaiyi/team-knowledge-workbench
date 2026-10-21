@@ -46,11 +46,14 @@ export const createFakeKnowledgeAuthorization = (fixture: {
       if (
         principal.actor.actor_type !== 'human'
         || command.asset_space_id !== knowledge.asset_space_id
+        || !principal.team_ids.includes(knowledge.team_id)
+        || !principal.asset_space_ids.includes(knowledge.asset_space_id)
       ) return denied;
 
       const space = fixture.spaces.find((item) => item.asset_space_id === knowledge.asset_space_id);
       const allowedRoles = requiredRoles[command.to];
-      if (!space || space.team_id !== knowledge.team_id || !allowedRoles) return denied;
+      if (!space || space.team_id !== knowledge.team_id || !allowedRoles
+        || !principal.roles.some((role) => allowedRoles.includes(role))) return denied;
 
       const allowed = fixture.members.some((member) =>
         member.actor_id === principal.actor.actor_id

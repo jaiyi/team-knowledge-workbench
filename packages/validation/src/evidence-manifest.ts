@@ -7,10 +7,10 @@ const safeText = (max: number) => z.string().trim().min(1).max(max).refine(
   (value) => !sensitiveText.test(value),
   { message: 'sensitive credential text is not allowed' },
 );
-const actor = z.string().trim().min(1).max(200);
+const actor = safeText(200);
 
 export const evidenceManifestSchema = z.strictObject({
-  manifest_id: z.string().trim().min(1).max(200),
+  manifest_id: actor,
   gate: z.enum(['p0', 'p0-plugin-spike', 'n0']),
   subject: z.enum(['workbench-product-package', 'backend', 'dsh-harness', 'provider-contract']),
   status: z.enum(['pending', 'passed', 'failed', 'blocked', 'unknown', 'reconciling', 'fallback_only']),

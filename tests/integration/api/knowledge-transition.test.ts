@@ -300,6 +300,37 @@ describe('Knowledge transition application boundary', () => {
     expect(result).toEqual({ ok: false, kind: 'authorization', message: 'Not authorized for Knowledge transition' });
   });
 
+  it('requires fresh fake authentication after a new space binding and role grant', () => {
+    const member = {
+      actor_id: 'human-1', team_id: 'team-a', asset_space_ids: ['space-other'],
+      roles: ['reviewer'] as ('steward' | 'reviewer')[],
+    };
+    const fake = createFakeKnowledgeAuthorization({
+      members: [member],
+      spaces: [
+        { asset_space_id: 'space-a', team_id: 'team-a' },
+        { asset_space_id: 'space-other', team_id: 'team-a' },
+      ],
+    });
+    const stale = fake.authenticate('human-1')!;
+    let verifierCalled = false;
+    const verifier: KnowledgeEvidenceVerifier = {
+      verify: (receivedKnowledge, receivedCommand) => {
+        verifierCalled = true;
+        return trustedVerifier.verify(receivedKnowledge, receivedCommand);
+      },
+    };
+    const denied = { ok: false, kind: 'authorization', message: 'Not authorized for Knowledge transition' };
+    member.roles = ['steward'];
+    expect(applyKnowledgeTransition(knowledge, command, stale, fake.authorizer, verifier)).toEqual(denied);
+    expect(verifierCalled).toBe(false);
+    member.asset_space_ids.push('space-a');
+    expect(applyKnowledgeTransition(knowledge, command, stale, fake.authorizer, verifier)).toEqual(denied);
+    expect(verifierCalled).toBe(false);
+    const fresh = fake.authenticate('human-1')!;
+    expect(applyKnowledgeTransition(knowledge, command, fresh, fake.authorizer, verifier).ok).toBe(true);
+  });
+
   it('rejects wrong roles, forged actors and subsequent calls after fixture revocation', () => {
     const members = [{ actor_id: 'human-1', team_id: 'team-a', asset_space_ids: ['space-a'], roles: ['reviewer'] as ('steward' | 'reviewer')[] }];
     const fake = createFakeKnowledgeAuthorization({
@@ -319,13 +350,17 @@ describe('Knowledge transition application boundary', () => {
     expect(applyKnowledgeTransition(knowledge, command, authenticated!, fake.authorizer, verifier)).toEqual(denied);
     members[0]!.roles = ['steward'];
     expect(applyKnowledgeTransition(knowledge, { ...command, actor: { actor_id: 'other', actor_type: 'human' } }, authenticated!, fake.authorizer, verifier))
+      .toEqual(denied);
+    expect(verifierCalled).toBe(false);
+    const refreshed = fake.authenticate('human-1')!;
+    expect(applyKnowledgeTransition(knowledge, { ...command, actor: { actor_id: 'other', actor_type: 'human' } }, refreshed, fake.authorizer, verifier))
       .toEqual({ ok: false, kind: 'authorization', message: 'Command actor does not match authenticated actor' });
     expect(verifierCalled).toBe(false);
-    expect(applyKnowledgeTransition(knowledge, command, authenticated!, fake.authorizer, verifier).ok).toBe(true);
+    expect(applyKnowledgeTransition(knowledge, command, refreshed, fake.authorizer, verifier).ok).toBe(true);
     expect(verifierCalled).toBe(true);
     verifierCalled = false;
     members.splice(0, 1);
-    expect(applyKnowledgeTransition(knowledge, command, authenticated!, fake.authorizer, verifier)).toEqual(denied);
+    expect(applyKnowledgeTransition(knowledge, command, refreshed, fake.authorizer, verifier)).toEqual(denied);
     expect(verifierCalled).toBe(false);
   });
 

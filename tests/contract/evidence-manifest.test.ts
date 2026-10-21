@@ -132,4 +132,22 @@ describe('P0 evidence manifest contract', () => {
       ).toBe(false);
     }
   });
+
+  it('rejects credential-shaped text in manifest IDs and actor fields', () => {
+    for (const field of [
+      'manifest_id',
+      'decision_record_id',
+      'requested_by',
+      'executed_by',
+      'decision_owner',
+      'reviewer',
+      'reviewed_by',
+      'owner',
+    ] as const) {
+      expect(evidenceManifestSchema.safeParse({
+        ...localEvidence,
+        [field]: 'token=synthetic-fixture',
+      }).success).toBe(false);
+    }
+  });
 });

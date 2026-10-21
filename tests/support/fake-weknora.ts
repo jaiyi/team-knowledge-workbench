@@ -6,7 +6,7 @@ import type {
   WeKnoraReadbackEvidence,
 } from '../../packages/contracts/src/index.js';
 
-type Request = {
+export type Request = {
   idempotencyKey: string;
   operationId: string;
   correlationId: string;
