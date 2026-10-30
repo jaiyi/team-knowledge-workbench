@@ -100,9 +100,9 @@ skills/<domain>/<name>/
 
 ## 5. 测试集与评测
 
-测试至少包含 Golden、Boundary、Exception、Regression 和 Security cases。首个 Skill 准备 3–5 个覆盖正常、边界和失败路径的脱敏样例，不以“模型看起来回答不错”代替测试集。
+测试至少包含 Golden、Boundary、Exception、Regression 和 Security cases。首个 Skill 准备 3–5 个覆盖正常、边界和失败路径的脱敏样例，不以“模型看起来回答不错”代替测试集。固定 `draft_revision_id`、指令、契约、依赖和测试集后，在已获安全准入的隔离非生产 Runner 用**目标 DSH 模型**对获准样例真正执行，记录模型/环境、真实输出、期望与禁止行为，并由有权业务人员对正确性、适用条件及停止点作语义判断；失败迭代指令并在新修订上重跑。模型自评、静态检查和脚本断言均不能代替人工语义评测；目标通道未验证时只保留设计/契约证据，不称已通过真实模型测试。
 
-**未批准 Draft 的执行边界（R-03 已裁决，隔离能力待实测）**：生成测试、检查 schema/依赖/secret/effects 声明与执行候选代码、脚本或 Tool 是两类不同动作，分别记录 `static_checked` 与 `execution_blocked|runner_tested`，不能把前者显示为真实试跑通过。隔离 Runner 的安全与平台准入未完成前，只开放不执行候选代码、不发外部调用的静态校验；浏览器固定虚构规则演练只标演示，不成为送审五门中的真实测试证据。受控试跑须由服务端针对固定 `session_id/draft_revision_id`、包/依赖版本、获准脱敏 fixture 和受限 tester 权限重新鉴权；仅在经负向测试的隔离非生产 Runner 中按批准动作运行，不带生产凭据，不允许跨团队读取或默认网络、文件、进程权限，实施 CPU/内存/时间/并发/成本配额、超时强制终止、清理和最小化审计。Runner 不可用、权限撤销、配额超限或隔离证据不足时 fail-closed，不能借 DSH 原生对话、通用 Tool 或 CI 绕过；此时保持真实测试门禁未满足，暂停送审而非伪造 `tested`。可执行范围及具体隔离机制以目标环境 Spike 决定，不预设已具备。
+**未批准 Draft 的执行边界（R-03 已裁决，隔离能力待实测）**：生成测试、检查 schema/依赖/secret/effects 声明与执行候选代码、脚本或 Tool 是两类不同动作，分别记录 `static_checked` 与 `execution_blocked|runner_tested`，不能把前者显示为真实试跑通过。隔离 Runner 的安全与平台准入未完成前，只开放不执行候选代码、不发外部调用的静态校验；浏览器固定虚构规则演练只标演示，不成为送审五门中的真实测试证据。**未经正式审核的 Draft 不得在普通 DSH Session 被发现/调用，也不得经 TeamAI 下发**；隔离的获准非生产模型试跑不改变这一发布边界。受控试跑须由服务端针对固定 `session_id/draft_revision_id`、包/依赖版本、获准脱敏 fixture 和受限 tester 权限重新鉴权；仅在经负向测试的隔离非生产 Runner 中按批准动作运行，不带生产凭据，不允许跨团队读取或默认网络、文件、进程权限，实施 CPU/内存/时间/并发/成本配额、超时强制终止、清理和最小化审计。Runner 不可用、权限撤销、配额超限或隔离证据不足时 fail-closed，不能借 DSH 原生对话、通用 Tool 或 CI 绕过；此时保持真实测试门禁未满足，暂停送审而非伪造 `tested`。可执行范围及具体隔离机制以目标环境 Spike 决定，不预设已具备。
 
 一次测试记录 Skill version/digest、Workflow revision、input fixture、确需时的知识引用版本与查询结果/不可用原因、能力需求声明、输出、期望与实际差异、断言、人工纠正、延迟/成本和失败分类。知识零结果、无权、过期或指定版本不可用的脱敏 fixture 应断言 Skill 告知用户并请求核实，不据此完成依赖知识的判断；未依赖知识的 Skill 不强制此类测试。测试只产生工作台评测证据，不改变正式知识、SkillHub release 或 Harness profile。
 
