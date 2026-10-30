@@ -446,3 +446,261 @@ describe('Workbench package fixture', () => {
     );
   });
 });
+
+type DraftElement = { tag: string | ((props: Record<string, unknown>) => DraftElement); props: Record<string, unknown>; children: Array<DraftElement | string> };
+
+const fakeDraftPanel = (sessions?: unknown) => {
+  const client = buildWorkbenchPackageInput({
+    sourceCommit: '0123456789abcdef0123456789abcdef01234567',
+  }).files.find((file) => file.path === 'client/index.js')?.content ?? '';
+  let panel: (() => DraftElement) | undefined;
+  let hooks: unknown[] = [];
+  let cursor = 0;
+  const cleanups: Array<() => void> = [];
+  const react = {
+    createElement: (tag: DraftElement['tag'], props: Record<string, unknown> | null, ...children: DraftElement['children']): DraftElement => (
+      { tag, props: props ?? {}, children }
+    ),
+    useState: (initial: unknown) => {
+      const index = cursor++;
+      if (!(index in hooks)) hooks[index] = initial;
+      return [hooks[index], (next: unknown) => { hooks[index] = next; }];
+    },
+    useRef: (initial: unknown) => {
+      const index = cursor++;
+      if (!(index in hooks)) hooks[index] = { current: initial };
+      return hooks[index];
+    },
+    useEffect: (effect: () => (() => void) | void) => {
+      const index = cursor++;
+      if (!(index in hooks)) {
+        hooks[index] = true;
+        const cleanup = effect();
+        if (cleanup) cleanups.push(cleanup);
+      }
+    },
+  };
+  let clientModule: { apply: (context: unknown) => void; inject: string[] } | undefined;
+  const timers = new Map<number, { callback: () => void; duration: number }>();
+  let timerId = 0;
+  runInNewContext(client, {
+    window: { __ModuleLoader__: { load: ({ factory }: { factory: (require: () => unknown) => typeof clientModule }) => {
+      clientModule = factory(() => react);
+    } } },
+    AbortController,
+    setTimeout: (callback: () => void, duration: number) => { timers.set(++timerId, { callback, duration }); return timerId; },
+    clearTimeout: (id: number) => { timers.delete(id); },
+  });
+  clientModule?.apply({
+    sessions,
+    slots: {
+      inject: (_name: string, register: () => void) => register(),
+      register: (options: { name: string }, component: () => DraftElement) => {
+        if (options.name === 'main') panel = component;
+        return () => {};
+      },
+    },
+  });
+  const render = (): DraftElement => {
+    cursor = 0;
+    const main = panel?.();
+    if (!main) throw new Error('missing panel');
+    const draft = main.children.find((child): child is DraftElement => typeof child !== 'string' && typeof child.tag === 'function');
+    if (!draft || typeof draft.tag !== 'function') throw new Error('missing draft review');
+    return draft.tag(draft.props);
+  };
+  const find = (tag: string, label: string): DraftElement => {
+    const visit = (node: DraftElement | string): DraftElement | undefined => {
+      if (typeof node === 'string') return undefined;
+      if (node.tag === tag && (node.props['aria-label'] === label || node.children.includes(label))) return node;
+      for (const child of node.children) {
+        const result = visit(child);
+        if (result) return result;
+      }
+      return undefined;
+    };
+    const match = visit(render());
+    if (!match) throw new Error(`missing ${label}`);
+    return match;
+  };
+  const change = (label: string, text: string) => {
+    const onChange = find('textarea', label).props.onChange as (event: { target: { value: string } }) => void;
+    onChange({ target: { value: text } });
+  };
+  return { render, find, change, timers, cleanups, inject: clientModule?.inject };
+};
+
+const fakeSession = () => {
+  let entries: unknown[] = [];
+  let hasMore = false;
+  const subscribers = new Set<() => void>();
+  const source = {
+    subscribe: (callback: () => void) => { subscribers.add(callback); return () => subscribers.delete(callback); },
+    getSnapshot: () => ({ entries, hasMore }),
+  };
+  const session = {
+    getSnapshot: () => ({ openState: 'open', removed: false }),
+    beginSubmission: vi.fn(() => ({ requestId: 'comment-request', abandon: vi.fn() })),
+    prompt: vi.fn(async (_content: unknown, _mode: string, _signal: AbortSignal, _requestId: string) => ({ ok: true })),
+    cancel: vi.fn(async () => ({ ok: true })),
+  };
+  const binding = { session, eventSource: source };
+  const release = vi.fn();
+  const sessions = { create: vi.fn(async () => 'isolated-session'), retain: vi.fn((_id: string, _options: unknown) => ({ ready: Promise.resolve(binding), release })) };
+  const publish = (events: unknown[], more = false) => {
+    entries = events.map((event) => ({ type: 'event', event }));
+    hasMore = more;
+    for (const subscriber of subscribers) subscriber();
+  };
+  return { sessions, session, publish, release, subscribers };
+};
+
+const revisionEvents = (answer = '修订的草稿', reason = 'completed') => [
+  { seq: 1, type: 'turn/start', data: { turn: 1 } },
+  { seq: 2, type: 'user/message', surfaceOp: 'append', data: { source: { kind: 'user', rpcId: 'comment-request' } } },
+  { seq: 3, type: 'assistant/message', surfaceOp: 'append', data: { turn: 1, message: { content: [{ type: 'text', text: answer }] } } },
+  { seq: 4, type: 'turn/end', data: { turn: 1, reason: { kind: reason } } },
+];
+
+describe('Client Session comment-driven draft revision', () => {
+  it('disables revision without the public Session API and keeps approval distinct from completion', () => {
+    const panel = fakeDraftPanel();
+    expect(panel.inject).toContain('sessions');
+    panel.change('草稿', '初稿');
+    panel.change('审核评论', '补充来源');
+    expect(panel.find('button', '按评论修订').props.disabled).toBe(true);
+    expect(JSON.stringify(panel.render())).toContain('Session API 不可用，修订已禁用');
+    (panel.find('button', '批准当前草稿').props.onClick as () => void)();
+    expect(JSON.stringify(panel.render())).toContain('已批准（未完成）');
+    panel.cleanups.forEach((cleanup) => cleanup());
+  });
+
+  it('does not mistake prompt acceptance or partial history for a completed revision', async () => {
+    const fake = fakeSession();
+    const panel = fakeDraftPanel(fake.sessions);
+    panel.change('草稿', '原稿');
+    panel.change('审核评论', '补充来源');
+    (panel.find('button', '按评论修订').props.onClick as () => void)();
+    await vi.waitFor(() => expect(fake.session.prompt).toHaveBeenCalledOnce());
+    expect(fake.sessions.create).toHaveBeenCalledOnce();
+    expect(fake.sessions.retain).toHaveBeenCalledWith('isolated-session', {
+      source: 'team-knowledge-workbench', signal: expect.any(AbortSignal),
+    });
+    expect(fake.session.prompt).toHaveBeenCalledWith([
+      expect.objectContaining({ type: 'text', text: expect.stringContaining('补充来源') }),
+    ], 'queue', expect.any(AbortSignal), 'comment-request');
+    fake.publish(revisionEvents().slice(0, 3));
+    expect(panel.find('textarea', '草稿').props.value).toBe('原稿');
+    fake.publish(revisionEvents(), true);
+    expect(panel.find('textarea', '草稿').props.value).toBe('原稿');
+    fake.publish(revisionEvents());
+    await vi.waitFor(() => expect(panel.find('textarea', '草稿').props.value).toBe('修订的草稿'));
+    expect(JSON.stringify(panel.render())).toContain('待审核');
+    expect(JSON.stringify(panel.render())).toContain('尚未批准或发布');
+    expect(fake.release).toHaveBeenCalledOnce();
+    expect(fake.subscribers.size).toBe(0);
+    expect([...panel.timers.values()].some((timer) => timer.duration === 30000)).toBe(false);
+    panel.cleanups.forEach((cleanup) => cleanup());
+  });
+
+  it.each([
+    ['wrong request', revisionEvents().map((event) => event.type === 'user/message' ? {
+      ...event, data: { source: { kind: 'user', rpcId: 'different' } },
+    } : event)],
+    ['duplicate user', [...revisionEvents(), { seq: 5, type: 'user/message', surfaceOp: 'append', data: { source: { kind: 'user', rpcId: 'comment-request' } } }]],
+    ['duplicate assistant', [...revisionEvents().slice(0, 3), {
+      seq: 3.5, type: 'assistant/message', surfaceOp: 'append', data: { turn: 1, message: { content: [{ type: 'text', text: 'other' }] } },
+    }, revisionEvents()[3]]],
+    ['aborted turn', revisionEvents('bad', 'aborted')],
+    ['tool call', [...revisionEvents().slice(0, 2), { seq: 2.5, type: 'tool/call', data: { turn: 1 } }, ...revisionEvents().slice(2)]],
+    ['reasoning block', revisionEvents().map((event) => event.type === 'assistant/message' ? {
+      ...event, data: { turn: 1, message: { content: [{ type: 'reasoning', text: 'hidden' }] } },
+    } : event)],
+  ])('keeps the original draft on %s', async (_reason, events) => {
+    const fake = fakeSession();
+    const panel = fakeDraftPanel(fake.sessions);
+    panel.change('草稿', '原稿');
+    panel.change('审核评论', '评论');
+    (panel.find('button', '按评论修订').props.onClick as () => void)();
+    await vi.waitFor(() => expect(fake.session.prompt).toHaveBeenCalledOnce());
+    fake.publish(events);
+    if (events.some((event) => event?.type === 'user/message' && 'source' in event.data && event.data.source?.rpcId === 'comment-request') &&
+      events.some((event) => event?.type === 'turn/end')) {
+      await vi.waitFor(() => expect(fake.release).toHaveBeenCalledOnce());
+    } else {
+      (panel.find('button', '取消修订').props.onClick as () => void)();
+      await vi.waitFor(() => expect(fake.release).toHaveBeenCalledOnce());
+    }
+    expect(panel.find('textarea', '草稿').props.value).toBe('原稿');
+    expect(JSON.stringify(panel.render())).toContain('修订未确认，保留原草稿');
+    expect(fake.subscribers.size).toBe(0);
+    panel.cleanups.forEach((cleanup) => cleanup());
+  });
+
+  it('cancels a stalled turn on timeout, releases the reference, and ignores late output', async () => {
+    const fake = fakeSession();
+    const panel = fakeDraftPanel(fake.sessions);
+    panel.change('草稿', '原稿');
+    panel.change('审核评论', '评论');
+    (panel.find('button', '按评论修订').props.onClick as () => void)();
+    await vi.waitFor(() => expect(fake.session.prompt).toHaveBeenCalledOnce());
+    const timeout = [...panel.timers.values()].find((timer) => timer.duration === 30000);
+    timeout?.callback();
+    await vi.waitFor(() => expect(fake.release).toHaveBeenCalledOnce());
+    expect(fake.session.cancel).toHaveBeenCalledOnce();
+    fake.publish(revisionEvents());
+    expect(panel.find('textarea', '草稿').props.value).toBe('原稿');
+    expect(fake.subscribers.size).toBe(0);
+    expect([...panel.timers.values()].some((timer) => timer.duration === 30000)).toBe(false);
+    panel.cleanups.forEach((cleanup) => cleanup());
+  });
+
+  it('preserves draft and releases on prompt rejection or unmount', async () => {
+    const fake = fakeSession();
+    fake.session.prompt.mockResolvedValueOnce({ ok: false });
+    const panel = fakeDraftPanel(fake.sessions);
+    panel.change('草稿', '原稿');
+    panel.change('审核评论', '评论');
+    (panel.find('button', '按评论修订').props.onClick as () => void)();
+    await vi.waitFor(() => expect(fake.release).toHaveBeenCalledOnce());
+    expect(panel.find('textarea', '草稿').props.value).toBe('原稿');
+    expect([...panel.timers.values()].some((timer) => timer.duration === 30000)).toBe(false);
+    panel.cleanups.forEach((cleanup) => cleanup());
+  });
+
+  it('uses a new Session for each later comment, with no previous answer promoted', async () => {
+    const fake = fakeSession();
+    fake.sessions.create.mockResolvedValueOnce('isolated-a').mockResolvedValueOnce('isolated-b');
+    const panel = fakeDraftPanel(fake.sessions);
+    panel.change('草稿', '原稿');
+    panel.change('审核评论', '第一条');
+    (panel.find('button', '按评论修订').props.onClick as () => void)();
+    await vi.waitFor(() => expect(fake.session.prompt).toHaveBeenCalledTimes(1));
+    fake.publish(revisionEvents('第一版'));
+    await vi.waitFor(() => expect(panel.find('textarea', '草稿').props.value).toBe('第一版'));
+    panel.change('审核评论', '第二条');
+    fake.publish([]); // The fake reuses its source; a real create returns a fresh Session history.
+    (panel.find('button', '按评论修订').props.onClick as () => void)();
+    await vi.waitFor(() => expect(fake.session.prompt).toHaveBeenCalledTimes(2));
+    expect(fake.sessions.retain.mock.calls.map((call) => call[0])).toEqual(['isolated-a', 'isolated-b']);
+    expect((fake.session.prompt.mock.calls[1]?.[0] as Array<{ text: string }>)[0]?.text).toContain('第一版');
+    fake.publish(revisionEvents('第二版'));
+    await vi.waitFor(() => expect(panel.find('textarea', '草稿').props.value).toBe('第二版'));
+    expect(fake.release).toHaveBeenCalledTimes(2);
+    panel.cleanups.forEach((cleanup) => cleanup());
+  });
+
+  it('stops a pending revision on unmount and does not adopt late output', async () => {
+    const fake = fakeSession();
+    const panel = fakeDraftPanel(fake.sessions);
+    panel.change('草稿', '原稿');
+    panel.change('审核评论', '评论');
+    (panel.find('button', '按评论修订').props.onClick as () => void)();
+    await vi.waitFor(() => expect(fake.session.prompt).toHaveBeenCalledOnce());
+    panel.cleanups.forEach((cleanup) => cleanup());
+    await vi.waitFor(() => expect(fake.release).toHaveBeenCalledOnce());
+    fake.publish(revisionEvents());
+    expect(panel.find('textarea', '草稿').props.value).toBe('原稿');
+    expect(fake.subscribers.size).toBe(0);
+  });
+});
