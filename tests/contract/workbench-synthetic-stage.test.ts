@@ -3,6 +3,7 @@ import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import { buildWorkbenchPackageInput } from '../../packages/distribution-adapter/src/workbench-package-fixture.js';
 import { buildSyntheticStageSnapshot } from '../../packages/distribution-adapter/src/synthetic-stage-fixture.js';
+import { buildPrototypeWeeklyReport, prototypeWeeklyReportDigest } from '../../packages/distribution-adapter/src/prototype-weekly-report-fixture.js';
 
 const sourceCommit = '0123456789abcdef0123456789abcdef01234567';
 type Element = { tag: string | ((props: Record<string, unknown>) => Element); props: Record<string, unknown>; children: Array<Element | string> };
@@ -119,17 +120,39 @@ describe('installed Client synthetic material stage', () => {
     expect(details.every((element) => element.props.open !== true)).toBe(true);
     expect(details[0]?.children[0]).toMatchObject({ tag: 'summary', children: ['技术信息'] });
     expect(details[1]?.children[0]).toMatchObject({ tag: 'summary', children: ['独立草稿修订实验'] });
-    expect(initial).toContain('PRJ-ORION-7');
-    expect(initial).toContain('2026-07-15');
-    expect(initial).toContain('报价过期');
-    expect(initial).toContain('不可送审');
-    expect(initial).toContain('质量审计结论缺失');
-    expect(initial).toContain('R3 适配试验未完成');
-    expect(initial).toContain('来源摘录');
-    expect(initial).not.toContain('sourceDigest');
+    expect(initial).toContain('采购协同周报 · 来源全文阅读');
+    expect(initial).not.toContain('PRJ-ORION-7');
+    expect(initial).not.toContain('quote_expired');
+    expect(stage.find('button', '事实梳理 · 固定锚点核对').props.disabled).toBe(true);
+    expect(stage.find('nav', '材料整理路径').children).toHaveLength(5);
+    const reportNav = stage.find('nav', '材料章节');
+    expect(reportNav.children.map((entry) => (entry as Element).children[0])).toEqual([
+      '来源信息与标题', '一、部门本周核心 KPI 概览', '二、本周重点采购工作进展',
+      '三、供应商管理与开发', '四、成本控制与降本项目', '五、采购风险预测及应对措施', '六、下周重点工作计划',
+    ]);
+    expect(reportNav.props.style).toMatchObject({ maxHeight: 480, overflowY: 'auto' });
+    expect(stage.findTag(stage.render(), 'article')?.props.style).toMatchObject({ maxHeight: 480, overflowY: 'auto' });
+    expect(JSON.stringify(stage.render())).toContain('采购协同周报（完整虚构演示文档）');
+    stage.click('四、成本控制与降本项目');
+    const costArticle = stage.findTag(stage.render(), 'article');
+    const costTable = stage.findTag(costArticle ?? '', 'table');
+    expect(costTable?.children.map((entry) => (entry as Element).tag)).toEqual(['thead', 'tbody']);
+    expect(JSON.stringify(costTable)).toContain('需求整合');
+    expect(JSON.stringify(costTable)).toContain('结构件');
+    expect(stage.find('div', '来源表格，可横向滚动').props.style).toHaveProperty('overflowX', 'auto');
+    expect(stage.find('button', '四、成本控制与降本项目').props['aria-pressed']).toBe(true);
+    stage.click('ORION · 固定锚点测试');
+    const orion = JSON.stringify(stage.render());
+    expect(orion).toContain('PRJ-ORION-7');
+    expect(orion).toContain('2026-07-15');
+    expect(orion).toContain('报价过期');
+    expect(orion).toContain('不可送审');
+    expect(orion).toContain('质量审计结论缺失');
+    expect(orion).toContain('R3 适配试验未完成');
+    expect(orion).toContain('ORION 来源摘录');
+    expect(orion).not.toContain('sourceDigest');
     expect(stage.find('button', '导入来源 · 固定样本只读').props.disabled).not.toBe(true);
     expect(stage.find('button', '事实梳理 · 固定锚点核对').props.disabled).not.toBe(true);
-    expect(stage.find('nav', '材料整理路径').children).toHaveLength(5);
     const workspace = sheet?.children.find((child): child is Element => typeof child !== 'string' && child !== null && child.tag === 'div');
     expect(workspace?.props.className).toBe('tkw-workspace');
     const navigation = stage.findTag(workspace ?? '', 'nav');
@@ -158,9 +181,10 @@ describe('installed Client synthetic material stage', () => {
     expect(initial).toContain('从真实过程里提炼可核对的依据');
     expect(initial).toContain('尊重原始语境，把有权使用的过程材料中的事实、判断和适用边界整理成他人能正确使用的依据；不预设必须新建知识。');
     expect(initial).toContain('这里处理来源与待核内容，不是文件上传即入库');
-    expect(initial).toContain('固定虚构样本');
-    expect(initial).toContain('未导入整份材料');
+    expect(initial).toContain('内置虚构示例');
+    expect(initial).toContain('未接入真实材料上传');
     expect(initial).not.toContain('从来源看清哪些结论还不能成立');
+    expect(stage.findTag(page, 'style')?.children[0]).toContain('.tkw-source-layout { grid-template-columns: minmax(0, 1fr)');
     expect(stage.sessions.create).not.toHaveBeenCalled();
     expect(stage.requests.mock.calls.every(([path]) => path === 'api/team-knowledge-workbench.health')).toBe(true);
     expect(stage.find('button', '导入来源 · 固定样本只读').props['aria-current']).toBe('step');
@@ -199,8 +223,9 @@ describe('installed Client synthetic material stage', () => {
 
   it('browses fixed material without starting a session and never treats the expired quote as eligible', () => {
     const stage = mountStage();
+    stage.click('ORION · 固定锚点测试');
     const initial = JSON.stringify(stage.render());
-    expect(initial).toContain('虚构样本');
+    expect(initial).toContain('固定虚构 Markdown');
     expect(initial).toContain('PRJ-ORION-7');
     expect(initial).toContain('quote_expired');
     expect(initial).toContain('2026-07-01');
@@ -229,6 +254,7 @@ describe('installed Client synthetic material stage', () => {
 
   it('creates one local pending-checks intention only after an explicit click; declines denied scenarios', () => {
     const stage = mountStage();
+    stage.click('ORION · 固定锚点测试');
     stage.click('浏览来源锚点');
     stage.click('取消浏览');
     stage.click('浏览来源锚点');
@@ -265,5 +291,54 @@ describe('installed Client synthetic material stage', () => {
     expect(stage.requests.mock.calls.every(([path]) => path === 'api/team-knowledge-workbench.health')).toBe(true);
     stage.cleanups.forEach((cleanup) => cleanup());
     expect(JSON.stringify(mountStage().render())).not.toContain('本地待补证草稿意向：1');
+  });
+
+  it('locks the complete prototype article without altering the ORION negative baseline', () => {
+    const prototype = readFileSync(new URL('../../docs/产品/可视化原型/index.html', import.meta.url), 'utf8');
+    const original = /  const knowledgeSample=`([^`]+)`;/.exec(prototype)?.[1];
+    const report = buildPrototypeWeeklyReport();
+    expect(report.digest).toBe(prototypeWeeklyReportDigest);
+    expect(report.content).toBe(original);
+    expect(report.content.split('\n')).toHaveLength(111);
+    expect(() => buildPrototypeWeeklyReport(() => prototype.replace('93.7%', '96.7%'))).toThrow('prototype weekly report digest mismatch');
+    const stage = mountStage();
+    expect(stage.client).toContain(JSON.stringify(report.content));
+    expect(JSON.stringify(stage.renderPanel())).toContain(`原型周报文章 SHA-256：${prototypeWeeklyReportDigest}`);
+    expect(JSON.stringify(stage.renderPanel())).toContain('ORION 五文件基线 SHA-256：');
+    const starts = report.content.split('\n').flatMap((line, index) => index > 0 && /^##\s/.test(line) ? [index] : []);
+    const boundaries = [0, ...starts, report.content.split('\n').length];
+    const navigation = stage.find('nav', '材料章节');
+    expect(navigation.children.map((entry) => (entry as Element).children[1])).toEqual(
+      boundaries.slice(0, -1).map((start, index) => expect.objectContaining({ children: [`行 ${start + 1}–${boundaries[index + 1]}`] })),
+    );
+    stage.click('一、部门本周核心 KPI 概览');
+    const kpi = stage.findTag(stage.render(), 'article');
+    expect(stage.findTag(kpi ?? '', 'table')?.children.map((entry) => (entry as Element).tag)).toEqual(['thead', 'tbody']);
+    expect(JSON.stringify(kpi)).toContain('93.7%');
+    stage.click('六、下周重点工作计划');
+    expect(JSON.stringify(stage.render())).toContain('演示包装尾注：不是周报正文');
+    expect(JSON.stringify(stage.render())).toContain('未读取附件');
+    expect(stage.find('button', '事实梳理 · 固定锚点核对').props.disabled).toBe(true);
+    expect(stage.find('button', '事实梳理 · 固定锚点核对').props.onClick).toBeUndefined();
+    stage.click('ORION · 固定锚点测试');
+    expect(JSON.stringify(stage.render())).toContain('quote_expired');
+    expect(JSON.stringify(stage.render())).not.toContain('准备 SRM 上线前的配置');
+    stage.click('浏览来源锚点');
+    expect(stage.find('nav', '来源章节').props.style).toMatchObject({ display: 'grid', overflowY: 'auto' });
+    stage.click('事实梳理 · 固定锚点核对');
+    stage.click('模拟建立待补证草稿意向');
+    expect(JSON.stringify(stage.render())).toContain('本地待补证草稿意向：1');
+    stage.click('原型周报 · 完整虚构示例');
+    expect(JSON.stringify(stage.render())).not.toContain('quote_expired');
+    expect(JSON.stringify(stage.render())).not.toContain('本地待补证草稿意向：1');
+    expect(stage.find('button', '导入来源 · 固定样本只读').props['aria-current']).toBe('step');
+    expect(stage.find('button', '来源信息与标题').props['aria-pressed']).toBe(true);
+    stage.click('ORION · 固定锚点测试');
+    expect(JSON.stringify(stage.render())).not.toContain('本地待补证草稿意向：1');
+    expect(JSON.stringify(stage.render())).not.toContain('SRC-REQ-01#P3');
+    expect(stage.find('button', '导入来源 · 固定样本只读').props['aria-current']).toBe('step');
+    expect(stage.sessions.create).not.toHaveBeenCalled();
+    expect(stage.requests.mock.calls.every(([path]) => path === 'api/team-knowledge-workbench.health')).toBe(true);
+    stage.cleanups.forEach((cleanup) => cleanup());
   });
 });

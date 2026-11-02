@@ -1,5 +1,6 @@
 import { computeRuntimeIdentityDigest } from './canonical-digest.js';
 import { buildSyntheticStageSnapshot } from './synthetic-stage-fixture.js';
+import { buildPrototypeWeeklyReport } from './prototype-weekly-report-fixture.js';
 import type { LocalPackageBuildInput } from './local-package-builder.js';
 
 const packageIdentity = 'team-knowledge-workbench';
@@ -317,6 +318,8 @@ const draftReviewClient = `    function completedRevision(snapshot, requestId) {
 
 const buildClientEntry = (): string => {
   const syntheticSnapshot = JSON.stringify(buildSyntheticStageSnapshot());
+  const prototype = buildPrototypeWeeklyReport();
+  const prototypeReport = JSON.stringify(prototype.content);
   return `window.__ModuleLoader__.load({
   id: '@local/${packageIdentity}',
   factory: (require) => {
@@ -325,9 +328,85 @@ const buildClientEntry = (): string => {
     const panelId = '${packageIdentity}';
     const healthPath = 'api/team-knowledge-workbench.health';
     const syntheticSnapshot = ${syntheticSnapshot};
+    const prototypeReport = ${prototypeReport};
+    const prototypeReportDigest = '${prototype.digest}';
+    const reportLines = prototypeReport.split('\\n');
+    const reportStarts = [0, ...reportLines.flatMap((line, index) => index > 0 && /^##\\s/.test(line) ? [index] : [])];
+    const reportSections = reportStarts.map((start, index) => ({
+      start, end: reportStarts[index + 1] ?? reportLines.length,
+      title: start === 0 ? '来源信息与标题' : reportLines[start].replace(/^##\\s*/, '').trim(),
+      body: reportLines.slice(start, reportStarts[index + 1] ?? reportLines.length).join('\\n'),
+    }));
+
+    function reportDocument(body) {
+      const lines = body.split('\\n');
+      const cells = (line) => line.slice(1, -1).split('|').map((cell) => cell.trim());
+      const inline = (text) => text.split(/(\\*\\*[^*\\n]+\\*\\*)/g).map((part, index) =>
+        part.startsWith('**') && part.endsWith('**') ? React.createElement('strong', { key: index }, part.slice(2, -2)) : part);
+      const nodes = [];
+      let index = 0;
+      while (index < lines.length) {
+        const line = lines[index];
+        if (!line.trim()) { index++; continue; }
+        if (line === '~~~') {
+          nodes.push(React.createElement('pre', { key: index, style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', background: '#edf3ee', padding: 12 } }, line));
+          index++;
+          continue;
+        }
+        if (line.startsWith('演示包装尾注：')) {
+          nodes.push(React.createElement('p', { key: index, style: { margin: '8px 0', color: '#52615b' } }, line));
+          index++;
+          continue;
+        }
+        const heading = /^(#{1,3})\\s+(.+)$/.exec(line);
+        if (heading) {
+          const tag = 'h' + heading[1].length;
+          nodes.push(React.createElement(tag, { key: index, style: { margin: '18px 0 8px' } }, heading[2]));
+          index++;
+          continue;
+        }
+        if (line === '---') {
+          nodes.push(React.createElement('hr', { key: index, style: { border: 0, borderTop: '1px solid #e4ebe6', margin: '16px 0' } }));
+          index++;
+          continue;
+        }
+        if (line.startsWith('|') && lines[index + 1]?.startsWith('|') && cells(line).length > 1 &&
+          cells(line).length === cells(lines[index + 1]).length && cells(lines[index + 1]).every((cell) => /^:?-{3,}:?$/.test(cell))) {
+          const start = index;
+          const columns = cells(line).length;
+          const headers = cells(line);
+          index += 2;
+          const rows = [];
+          while (index < lines.length && lines[index].startsWith('|') && cells(lines[index]).length === columns) rows.push(cells(lines[index++]));
+          const header = React.createElement('thead', null, React.createElement('tr', null, ...headers.map((cell, column) =>
+            React.createElement('th', { key: column, scope: 'col', style: { padding: '8px 11px', borderBottom: '1px solid #e4ebe6', textAlign: 'left' } }, ...inline(cell)))));
+          const body = React.createElement('tbody', null, ...rows.map((row, rowIndex) => React.createElement('tr', { key: rowIndex }, ...row.map((cell, column) =>
+            React.createElement('td', { key: column, style: { padding: '8px 11px', borderBottom: '1px solid #e4ebe6', textAlign: 'left', maxWidth: 290, whiteSpace: 'normal' } }, ...inline(cell))))));
+          nodes.push(React.createElement('div', { key: start, role: 'region', 'aria-label': '来源表格，可横向滚动', tabIndex: 0,
+            style: { maxWidth: '100%', overflowX: 'auto', border: '1px solid #e4ebe6', borderRadius: 8, margin: '12px 0' } },
+            React.createElement('table', { style: { borderCollapse: 'collapse', minWidth: 'max-content', width: '100%', fontSize: 12 } }, header, body)));
+          continue;
+        }
+        if (line.startsWith('* ')) {
+          const start = index;
+          const items = [];
+          while (index < lines.length && lines[index].startsWith('* ')) items.push(lines[index++].slice(2));
+          nodes.push(React.createElement('ul', { key: start }, ...items.map((item, itemIndex) => React.createElement('li', { key: itemIndex }, ...inline(item)))));
+          continue;
+        }
+        const start = index;
+        const paragraph = [];
+        while (index < lines.length && lines[index].trim() && !/^(?:#{1,3}\\s|---$|~~~$|\\* |\\|)/.test(lines[index])) paragraph.push(lines[index++]);
+        if (!paragraph.length) paragraph.push(lines[index++]);
+        nodes.push(React.createElement('p', { key: start, style: { margin: '8px 0', whiteSpace: 'pre-wrap' } }, ...inline(paragraph.join('\\n'))));
+      }
+      return nodes;
+    }
 
     function SyntheticStage() {
       const [step, setStep] = React.useState('source');
+      const [material, setMaterial] = React.useState('report');
+      const [reportSection, setReportSection] = React.useState(0);
       const [scenario, setScenario] = React.useState('owner');
       const [browsing, setBrowsing] = React.useState(false);
       const [source, setSource] = React.useState('SRC-REQ-01');
@@ -344,6 +423,15 @@ const buildClientEntry = (): string => {
       const button = { padding: '9px 12px', borderRadius: 6, border: '1px solid #cbd8d0', background: '#fff', color: '#245b43', whiteSpace: 'normal', overflowWrap: 'anywhere' };
       const unavailable = { ...button, background: '#f7f9f6', color: '#687a70' };
       const openSource = (id) => { if (allowed) { setSource(id); setBrowsing(true); setStep('source'); } };
+      const selectMaterial = (next) => {
+        setMaterial(next);
+        setStep('source');
+        setBrowsing(false);
+        setSource('SRC-REQ-01');
+        setReportSection(0);
+        setScenario('owner');
+        setIntention(false);
+      };
       return React.createElement('section', { style: { color: '#202d29', lineHeight: 1.55 } },
         React.createElement('header', { style: { marginBottom: 17 } },
           React.createElement('p', { style: { ...muted, fontSize: 12, fontWeight: 650, margin: '0 0 5px' } }, 'WORKBENCH / 提炼知识&经验'),
@@ -351,31 +439,49 @@ const buildClientEntry = (): string => {
           React.createElement('p', { style: { color: '#42544a', fontSize: 14, margin: 0 } }, '尊重原始语境，把有权使用的过程材料中的事实、判断和适用边界整理成他人能正确使用的依据；不预设必须新建知识。')),
         React.createElement('aside', { style: { ...card, background: '#f3f7f3', borderLeft: '3px solid #87ae94', fontSize: 13 } },
           React.createElement('strong', null, '这里处理来源与待核内容，不是文件上传即入库'),
-          React.createElement('p', { style: { margin: '6px 0 0' } }, '从获准材料开始；核来源当时说法、证据与反例，必要时才提出知识候选。此页仅展示固定虚构样本的段落摘录，未导入整份材料；无真实授权，请勿输入真实资料。')),
+          React.createElement('p', { style: { margin: '6px 0 0' } }, '这里仅提供内置虚构示例的本地阅读；未接入真实材料上传、自动提炼，无真实授权，请勿输入真实资料。')),
+        React.createElement('div', { role: 'group', 'aria-label': '虚构验收材料', style: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 } },
+          React.createElement('button', { type: 'button', style: button, 'aria-pressed': material === 'report', onClick: () => selectMaterial('report') }, '原型周报 · 完整虚构示例'),
+          React.createElement('button', { type: 'button', style: button, 'aria-pressed': material === 'orion', onClick: () => selectMaterial('orion') }, 'ORION · 固定锚点测试')),
+        material === 'orion' ? React.createElement('div', null,
         React.createElement('p', { style: { ...muted, margin: '0 0 14px' } }, 'PRJ-ORION-7 / AS-ORION · 评测日 2026-07-15 · 本机模拟，不代表正式创作会话或可用的材料导入'),
         React.createElement('div', { role: 'status', style: { ...card, borderColor: '#e7d9ae', background: '#faf1dd' } },
           React.createElement('strong', { style: { color: '#754d16', fontSize: 17 } }, '报价过期 · 不可送审'),
           React.createElement('p', { style: { margin: '7px 0' } }, 'quote_expired：报价有效至 ' + syntheticSnapshot.review.quoteValidThrough +
             '；固定评测日为 2026-07-15。11 个段落锚点存在，不代表材料或事实已获核证。'),
-          React.createElement('p', { style: { ...muted, margin: 0 } }, '质量审计结论缺失；R3 适配试验未完成。2026-08-31 是内部采购目标，不是供应商承诺。')),
+          React.createElement('p', { style: { ...muted, margin: 0 } }, '质量审计结论缺失；R3 适配试验未完成。2026-08-31 是内部采购目标，不是供应商承诺。'))) :
+          React.createElement('p', { style: { ...muted, margin: '0 0 14px' } }, '原型周报 · 页面内置完整虚构文章（非 ORION 项目）；仅供排版和来源阅读验收，未经事实核证，也不是实际文件导入。'),
         React.createElement('nav', { 'aria-label': '材料整理路径', style: { ...card, display: 'flex', flexWrap: 'wrap', gap: 8 } },
           React.createElement('button', { style: { ...button, background: step === 'source' ? '#eaf1eb' : '#fff' },
             'aria-current': step === 'source' ? 'step' : undefined, onClick: () => setStep('source') }, '导入来源 · 固定样本只读'),
           React.createElement('button', { style: { ...button, background: step === 'review' ? '#eaf1eb' : '#fff' },
-            'aria-current': step === 'review' ? 'step' : undefined, onClick: () => setStep('review') }, '事实梳理 · 固定锚点核对'),
+            'aria-current': step === 'review' ? 'step' : undefined, disabled: material !== 'orion',
+            onClick: material === 'orion' ? () => setStep('review') : undefined }, '事实梳理 · 固定锚点核对'),
           ...['经验总结 · 未接入', '加入知识库 · 未接入', '优化已有 Skill · 未接入'].map((name) =>
             React.createElement('button', { key: name, style: unavailable, disabled: true }, name))),
+        step === 'source' && material === 'report' ? React.createElement('section', { style: card },
+          React.createElement('h2', null, '采购协同周报 · 来源全文阅读'),
+          React.createElement('p', { style: muted }, '与可视化原型完全相同的内置虚构周报 · ' + reportLines.length + ' 行；按标题分章仅供阅读，不是自动事实提炼。表格、附录和包装尾注保留原文；附件未读取，eof 之后的尾注不是周报正文。'),
+          React.createElement('div', { className: 'tkw-source-layout', style: { display: 'grid', gridTemplateColumns: 'minmax(170px, 1fr) minmax(0, 3fr)', gap: 14, minWidth: 0 } },
+            React.createElement('nav', { 'aria-label': '材料章节', style: { display: 'grid', alignContent: 'start', gap: 6, maxHeight: 480, overflowY: 'auto', overscrollBehavior: 'contain' } },
+              ...reportSections.map((section, index) => React.createElement('button', { key: section.start, type: 'button',
+                'aria-pressed': reportSection === index, style: { ...button, textAlign: 'left', background: reportSection === index ? '#eaf1eb' : '#fff' },
+                onClick: () => setReportSection(index) }, section.title,
+                React.createElement('small', { style: { display: 'block', color: '#276b48', fontSize: 11 } }, '行 ' + (section.start + 1) + '–' + section.end)))),
+            React.createElement('article', { role: 'region', 'aria-label': '周报原文 · ' + reportSections[reportSection].title,
+              key: reportSection, tabIndex: 0, style: { minWidth: 0, maxHeight: 480, overflowY: 'auto', overscrollBehavior: 'contain', padding: '20px 23px', background: '#fbfcfa', border: '1px solid #e4ebe6', borderRadius: 8, overflowWrap: 'anywhere', fontSize: 13, lineHeight: 1.75 } },
+              ...reportDocument(reportSections[reportSection].body)))) :
         step === 'source' ? React.createElement('section', { style: card },
-          React.createElement('h2', null, '来源摘录 · 只读'),
-          React.createElement('p', { style: muted }, '固定虚构 Markdown 中的 11 个段落摘录；未导入文件、未读取附件，也不代表五份基线文件的全文解析。'),
+          React.createElement('h2', null, 'ORION 来源摘录 · 只读'),
+          React.createElement('p', { style: muted }, '固定虚构 Markdown 中四条独立来源记录的 11 个原句锚点，并非四份完整原件；同一文件另有复核评论。未导入文件、未读取附件，也不代表五份基线文件的全文解析。'),
           React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 } },
             React.createElement('button', { style: button, disabled: !allowed, onClick: () => { if (allowed) setBrowsing(true); } }, '浏览来源锚点'),
             React.createElement('button', { style: button, onClick: () => setBrowsing(false) }, '取消浏览')),
-          browsing && allowed ? React.createElement('div', null,
-            React.createElement('nav', { 'aria-label': '来源章节', style: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 } },
-              ...groups.map(([id, title]) => React.createElement('button', { key: id, style: { ...button, background: source === id ? '#eaf1eb' : '#fff' },
+          browsing && allowed ? React.createElement('div', { className: 'tkw-source-layout', style: { display: 'grid', gridTemplateColumns: 'minmax(170px, 1fr) minmax(0, 3fr)', gap: 14, minWidth: 0 } },
+            React.createElement('nav', { 'aria-label': '来源章节', style: { display: 'grid', alignContent: 'start', gap: 6, maxHeight: 320, overflowY: 'auto', overscrollBehavior: 'contain' } },
+              ...groups.map(([id, title]) => React.createElement('button', { key: id, style: { ...button, textAlign: 'left', background: source === id ? '#eaf1eb' : '#fff' },
                 'aria-pressed': source === id, onClick: () => setSource(id) }, title))),
-            React.createElement('article', { style: { padding: 16, borderRadius: 7, background: '#f7f9f6', maxHeight: 320, overflowY: 'auto', overflowWrap: 'anywhere' } },
+            React.createElement('article', { style: { minWidth: 0, padding: 16, borderRadius: 7, background: '#f7f9f6', maxHeight: 320, overflowY: 'auto', overflowWrap: 'anywhere' } },
               React.createElement('h3', null, source + ' · 固定段落摘录'),
               React.createElement('ul', null, ...syntheticSnapshot.anchors.filter((anchor) => anchor.id.startsWith(source + '#')).map((anchor) =>
                 React.createElement('li', { key: anchor.id, style: { marginBottom: 12 } },
@@ -465,6 +571,9 @@ ${draftReviewClient}
           '.tkw-workspace { display: grid !important; grid-template-columns: 232px minmax(0, 1fr); }',
           '.tkw-navigation button { width: 100%; font: inherit; font-size: 13px; min-height: 40px; }',
           '.tkw-sheet .tkw-content { min-width: 0; }',
+          '@container (max-width: 1000px) {',
+          ' .tkw-source-layout { grid-template-columns: minmax(0, 1fr) !important; }',
+          '}',
           '@container (max-width: 760px) {',
           ' .tkw-workspace { grid-template-columns: minmax(0, 1fr); }',
           ' .tkw-navigation { padding: 14px 12px !important; }',
@@ -493,8 +602,9 @@ ${draftReviewClient}
             React.createElement('summary', null, '技术信息'),
             React.createElement('p', null, panelId + ' · v${packageVersion}'),
             React.createElement('p', null, '本机 API 健康：' + status + '；仅代表连接状态，不代表业务就绪。'),
-            React.createElement('p', { style: { overflowWrap: 'anywhere' } }, '来源摘要 SHA-256：' + syntheticSnapshot.sourceDigest),
-            React.createElement('p', { style: { overflowWrap: 'anywhere' } }, '五文件基线 SHA-256：' + syntheticSnapshot.baselineDigest),
+            React.createElement('p', { style: { overflowWrap: 'anywhere' } }, '原型周报文章 SHA-256：' + prototypeReportDigest),
+            React.createElement('p', { style: { overflowWrap: 'anywhere' } }, 'ORION 来源摘要 SHA-256：' + syntheticSnapshot.sourceDigest),
+            React.createElement('p', { style: { overflowWrap: 'anywhere' } }, 'ORION 五文件基线 SHA-256：' + syntheticSnapshot.baselineDigest),
             React.createElement('p', null, 'fixture_only · external_provider_unavailable')),
           React.createElement('details', { style: { marginTop: 12, padding: 12, border: '1px solid #e4ebe6', borderRadius: 8 } },
             React.createElement('summary', null, '独立草稿修订实验'),
