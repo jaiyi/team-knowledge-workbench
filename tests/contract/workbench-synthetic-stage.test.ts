@@ -58,11 +58,16 @@ function mountStage() {
       },
     },
   });
-  const render = () => {
+  const renderPanel = () => {
     cursor = 0;
     const root = main?.();
     if (!root) throw new Error('missing main panel');
-    const stage = root.children.find((child): child is Element => typeof child !== 'string' && child !== null && typeof child.tag === 'function' && child.tag.name === 'SyntheticStage');
+    return root;
+  };
+  const render = () => {
+    const root = renderPanel();
+    const sheet = root.children.find((child): child is Element => typeof child !== 'string' && child !== null && child.tag === 'div');
+    const stage = sheet?.children.find((child): child is Element => typeof child !== 'string' && child !== null && typeof child.tag === 'function' && child.tag.name === 'SyntheticStage');
     if (!stage || typeof stage.tag !== 'function') throw new Error('missing synthetic stage');
     return stage.tag(stage.props);
   };
@@ -81,10 +86,49 @@ function mountStage() {
   };
   const click = (label: string) => (find('button', label).props.onClick as () => void)();
   const choose = (value: string) => (find('select', '模拟情境').props.onChange as (event: { target: { value: string } }) => void)({ target: { value } });
-  return { client, render, find, click, choose, sessions, requests, cleanups };
+  return { client, render, renderPanel, find, click, choose, sessions, requests, cleanups };
 }
 
 describe('installed Client synthetic material stage', () => {
+  it('presents the limited material path with the prototype hierarchy, not an unlocked knowledge workflow', () => {
+    const stage = mountStage();
+    const page = stage.renderPanel();
+    const sheet = page.children.find((child): child is Element => typeof child !== 'string' && child !== null && child.tag === 'div');
+    const initial = JSON.stringify(stage.render());
+    expect(page.props.style).toMatchObject({ background: '#f1f5f2' });
+    const details = sheet?.children.filter((child): child is Element => typeof child !== 'string' && child !== null && child.tag === 'details') ?? [];
+    expect(details).toHaveLength(2);
+    expect(details.every((element) => element.props.open !== true)).toBe(true);
+    expect(details[0]?.children[0]).toMatchObject({ tag: 'summary', children: ['技术信息'] });
+    expect(details[1]?.children[0]).toMatchObject({ tag: 'summary', children: ['独立草稿修订实验'] });
+    expect(initial).toContain('PRJ-ORION-7');
+    expect(initial).toContain('2026-07-15');
+    expect(initial).toContain('报价过期');
+    expect(initial).toContain('不可送审');
+    expect(initial).toContain('质量审计结论缺失');
+    expect(initial).toContain('R3 适配试验未完成');
+    expect(initial).toContain('来源摘录');
+    expect(initial).not.toContain('sourceDigest');
+    expect(stage.find('button', '导入来源 · 固定样本只读').props.disabled).not.toBe(true);
+    expect(stage.find('button', '事实梳理 · 固定锚点核对').props.disabled).not.toBe(true);
+    expect(stage.find('nav', 'Workbench 五个并列入口').children).toHaveLength(5);
+    expect(stage.find('nav', '材料整理路径').children).toHaveLength(5);
+    expect(stage.find('button', '导入来源 · 固定样本只读').props['aria-current']).toBe('step');
+    for (const label of ['经验总结 · 未接入', '加入知识库 · 未接入', '优化已有 Skill · 未接入']) {
+      expect(stage.find('button', label).props.disabled).toBe(true);
+    }
+    stage.click('事实梳理 · 固定锚点核对');
+    expect(stage.find('button', '事实梳理 · 固定锚点核对').props['aria-current']).toBe('step');
+    expect(JSON.stringify(stage.render())).toContain('模拟建立待补证草稿意向');
+    stage.click('查看 报价摘要 · 2026-06-18 的来源摘录');
+    expect(JSON.stringify(stage.render())).toContain('SRC-QUOTE-03#P1');
+    stage.click('事实梳理 · 固定锚点核对');
+
+    stage.click('导入来源 · 固定样本只读');
+    expect(JSON.stringify(stage.render())).toContain('浏览来源锚点');
+    stage.cleanups.forEach((cleanup) => cleanup());
+  });
+
   it('rejects drift of either the complete T24 sample or its source file at build time', () => {
     const baseline = buildSyntheticStageSnapshot();
     expect(baseline.baselineDigest).toBe('5d3f913f53878546f381bd9069e77874f6fa93f96974e2204808c813d9856ec2');
@@ -114,13 +158,17 @@ describe('installed Client synthetic material stage', () => {
     expect(initial).toContain('质量审计结论缺失');
     expect(initial).toContain('R3 适配试验未完成');
     expect(initial).toContain('提炼知识&经验');
-    expect(initial).toContain('external_provider_unavailable');
+    expect(JSON.stringify(stage.renderPanel())).toContain('external_provider_unavailable');
     expect(initial).not.toContain('SRC-REQ-01#P3`：');
     stage.click('浏览来源锚点');
     expect(JSON.stringify(stage.render())).toContain('SRC-REQ-01#P3');
+    expect(JSON.stringify(stage.render())).not.toContain('SRC-QA-02#P1');
     stage.click('取消浏览');
     stage.click('浏览来源锚点');
+    (stage.find('button', '报价摘要 · 2026-06-18').props.onClick as () => void)();
     expect(JSON.stringify(stage.render())).toContain('SRC-QUOTE-03#P1');
+    expect(JSON.stringify(stage.render())).not.toContain('SRC-REQ-01#P3');
+    stage.click('事实梳理 · 固定锚点核对');
     expect(stage.find('button', '提交候选（缺证禁用）').props.disabled).toBe(true);
     expect(stage.sessions.create).not.toHaveBeenCalled();
     expect(stage.requests.mock.calls.every(([path]) => path === 'api/team-knowledge-workbench.health')).toBe(true);
@@ -130,9 +178,18 @@ describe('installed Client synthetic material stage', () => {
 
   it('creates one local pending-checks intention only after an explicit click; declines denied scenarios', () => {
     const stage = mountStage();
+    stage.click('浏览来源锚点');
+    stage.click('取消浏览');
+    stage.click('浏览来源锚点');
+    stage.click('事实梳理 · 固定锚点核对');
     stage.choose('cross_space');
+    stage.click('导入来源 · 固定样本只读');
     expect(stage.find('button', '浏览来源锚点').props.disabled).toBe(true);
+    stage.click('事实梳理 · 固定锚点核对');
+    expect(stage.find('button', '查看 报价摘要 · 2026-06-18 的来源摘录').props.disabled).toBe(true);
+    stage.click('导入来源 · 固定样本只读');
     expect(JSON.stringify(stage.render())).not.toContain('SRC-REQ-01#P3');
+    stage.click('事实梳理 · 固定锚点核对');
     expect(stage.find('button', '模拟建立待补证草稿意向').props.disabled).toBe(true);
     (stage.find('button', '模拟建立待补证草稿意向').props.onClick as () => void)();
     expect(JSON.stringify(stage.render())).not.toContain('本地待补证草稿意向：1');

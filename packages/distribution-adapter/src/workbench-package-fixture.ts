@@ -327,44 +327,91 @@ const buildClientEntry = (): string => {
     const syntheticSnapshot = ${syntheticSnapshot};
 
     function SyntheticStage() {
+      const [step, setStep] = React.useState('source');
       const [scenario, setScenario] = React.useState('owner');
       const [browsing, setBrowsing] = React.useState(false);
+      const [source, setSource] = React.useState('SRC-REQ-01');
       const [intention, setIntention] = React.useState(false);
-      const entries = ['我的工作台', '提炼知识&经验', '打磨可复用的技能', '连接业务数据源', '团队业务资产大盘'];
       const allowed = scenario === 'owner';
-      return React.createElement('section', null,
-        React.createElement('h2', null, '虚构样本 · 材料核证与创作边界'),
-        React.createElement('p', null, 'PRJ-ORION-7 / AS-ORION · 2026-07-15 · 本机模拟，无真实授权'),
-        React.createElement('p', null, '材料：' + syntheticSnapshot.review.blockers.join(', ') +
-          '；报价有效至 ' + syntheticSnapshot.review.quoteValidThrough + '；不可送审'),
-        React.createElement('p', null, '质量审计结论缺失；R3 适配试验未完成；2026-08-31 是内部采购目标，不是供应商承诺'),
-        React.createElement('p', null, '来源摘要 SHA-256：' + syntheticSnapshot.sourceDigest),
-        React.createElement('p', null, '五文件基线 SHA-256：' + syntheticSnapshot.baselineDigest),
-        React.createElement('ul', null, ...entries.map((name, index) =>
-          React.createElement('li', { key: name }, name + ' · fixture_only' +
-            (index === 0 ? '' : ' · external_provider_unavailable')))),
-        React.createElement('button', { disabled: !allowed, onClick: () => { if (allowed) setBrowsing(true); } }, '浏览来源锚点'),
-        React.createElement('button', { onClick: () => setBrowsing(false) }, '取消浏览'),
-        browsing && allowed ? React.createElement('ul', null, ...syntheticSnapshot.anchors.map((anchor) =>
-          React.createElement('li', { key: anchor.id }, anchor.id + '：' + anchor.text))) : null,
-        React.createElement('label', null, '模拟情境 ', React.createElement('select', {
-          'aria-label': '模拟情境', value: scenario, onChange: (event) => {
-            setScenario(event.target.value);
-            setBrowsing(false);
-            setIntention(false);
-          },
-        },
-          React.createElement('option', { value: 'owner' }, '虚构项目成员'),
-          React.createElement('option', { value: 'cross_space' }, '跨空间：拒绝'),
-          React.createElement('option', { value: 'revoked' }, '已撤权：拒绝'),
-          React.createElement('option', { value: 'stale_baseline' }, '旧基线：拒绝'))),
-        React.createElement('p', null, allowed ? '仅可模拟待补证草稿，不能提交候选' : '模拟请求已拒绝：无草稿副作用'),
-        React.createElement('button', {
-          disabled: !allowed, onClick: () => { if (allowed) setIntention(true); },
-        }, '模拟建立待补证草稿意向'),
-        intention ? React.createElement('p', null, '本地待补证草稿意向：1 · pending_checks · quote_expired · 非真实会话/草稿') : null,
-        React.createElement('button', { disabled: true }, '提交候选（缺证禁用）'),
-        React.createElement('p', null, '本区域不会调用 DSH Session；下方事实/经验草稿审核是独立功能。')
+      const groups = [
+        ['SRC-REQ-01', '项目需求纪要 · 2026-06-03'],
+        ['SRC-QA-02', '质量核验记录 · 2026-06-12'],
+        ['SRC-QUOTE-03', '报价摘要 · 2026-06-18'],
+        ['SRC-CHANGE-04', '工程变更备忘 · 2026-07-08'],
+      ];
+      const card = { background: '#fff', border: '1px solid #e4ebe6', borderRadius: 9, padding: '18px 20px', marginBottom: 16 };
+      const muted = { color: '#52615b', fontSize: 13, lineHeight: 1.6 };
+      const button = { padding: '9px 12px', borderRadius: 6, border: '1px solid #cbd8d0', background: '#fff', color: '#245b43' };
+      const unavailable = { ...button, background: '#f7f9f6', color: '#687a70' };
+      const openSource = (id) => { if (allowed) { setSource(id); setBrowsing(true); setStep('source'); } };
+      const entries = ['我的工作台', '提炼知识&经验', '打磨可复用的技能', '连接业务数据源', '团队业务资产大盘'];
+      return React.createElement('section', { style: { color: '#202d29', lineHeight: 1.55 } },
+        React.createElement('header', { style: { marginBottom: 20 } },
+          React.createElement('p', { style: { ...muted, margin: '0 0 6px' } }, 'WORKBENCH / 提炼知识&经验 · 固定样本'),
+          React.createElement('h1', { style: { fontSize: 24, margin: '0 0 8px' } }, '从来源看清哪些结论还不能成立'),
+          React.createElement('p', { style: muted }, 'PRJ-ORION-7 / AS-ORION · 评测日 2026-07-15 · 虚构样本，本机模拟，无真实授权')),
+        React.createElement('nav', { 'aria-label': 'Workbench 五个并列入口', style: { ...card, display: 'flex', flexWrap: 'wrap', gap: 10 } },
+          ...entries.map((name, index) => React.createElement('span', { key: name,
+            style: { padding: '7px 10px', borderRadius: 6, background: index === 1 ? '#eaf1eb' : '#f7f9f6', fontSize: 12 } },
+            name + (index === 1 ? ' · 当前固定样本' : ' · 尚未接入')))),
+        React.createElement('div', { role: 'status', style: { ...card, borderColor: '#e7d9ae', background: '#faf1dd' } },
+          React.createElement('strong', { style: { color: '#754d16', fontSize: 17 } }, '报价过期 · 不可送审'),
+          React.createElement('p', { style: { margin: '7px 0' } }, 'quote_expired：报价有效至 ' + syntheticSnapshot.review.quoteValidThrough +
+            '；固定评测日为 2026-07-15。11 个段落锚点存在，不代表材料或事实已获核证。'),
+          React.createElement('p', { style: { ...muted, margin: 0 } }, '质量审计结论缺失；R3 适配试验未完成。2026-08-31 是内部采购目标，不是供应商承诺。')),
+        React.createElement('nav', { 'aria-label': '材料整理路径', style: { ...card, display: 'flex', flexWrap: 'wrap', gap: 8 } },
+          React.createElement('button', { style: { ...button, background: step === 'source' ? '#eaf1eb' : '#fff' },
+            'aria-current': step === 'source' ? 'step' : undefined, onClick: () => setStep('source') }, '导入来源 · 固定样本只读'),
+          React.createElement('button', { style: { ...button, background: step === 'review' ? '#eaf1eb' : '#fff' },
+            'aria-current': step === 'review' ? 'step' : undefined, onClick: () => setStep('review') }, '事实梳理 · 固定锚点核对'),
+          ...['经验总结 · 未接入', '加入知识库 · 未接入', '优化已有 Skill · 未接入'].map((name) =>
+            React.createElement('button', { key: name, style: unavailable, disabled: true }, name))),
+        step === 'source' ? React.createElement('section', { style: card },
+          React.createElement('h2', null, '来源摘录 · 只读'),
+          React.createElement('p', { style: muted }, '固定虚构 Markdown 中的 11 个段落摘录；未导入文件、未读取附件，也不代表五份基线文件的全文解析。'),
+          React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 } },
+            React.createElement('button', { style: button, disabled: !allowed, onClick: () => { if (allowed) setBrowsing(true); } }, '浏览来源锚点'),
+            React.createElement('button', { style: button, onClick: () => setBrowsing(false) }, '取消浏览')),
+          browsing && allowed ? React.createElement('div', null,
+            React.createElement('nav', { 'aria-label': '来源章节', style: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 } },
+              ...groups.map(([id, title]) => React.createElement('button', { key: id, style: { ...button, background: source === id ? '#eaf1eb' : '#fff' },
+                'aria-pressed': source === id, onClick: () => setSource(id) }, title))),
+            React.createElement('article', { style: { padding: 16, borderRadius: 7, background: '#f7f9f6', maxHeight: 320, overflowY: 'auto', overflowWrap: 'anywhere' } },
+              React.createElement('h3', null, source + ' · 固定段落摘录'),
+              React.createElement('ul', null, ...syntheticSnapshot.anchors.filter((anchor) => anchor.id.startsWith(source + '#')).map((anchor) =>
+                React.createElement('li', { key: anchor.id, style: { marginBottom: 12 } },
+                  React.createElement('strong', null, anchor.id), '：' + anchor.text))))) :
+            React.createElement('p', { style: muted }, allowed ? '按需浏览来源；仅查看不建立草稿。' : '模拟情境已拒绝：来源摘录不可见。')) :
+          React.createElement('section', { style: card },
+            React.createElement('h2', null, '固定锚点核对 · 不是事实提炼'),
+            React.createElement('p', { style: muted }, '仅对已锁定来源的段落定位和报价时效做有限检查；没有权威事实核验、经验稿或已有知识版本对照。'),
+            React.createElement('p', null, '锚点覆盖 ' + syntheticSnapshot.review.coveredAnchors.length + '/' + syntheticSnapshot.anchors.length +
+              ' · quote_expired · 报价有效至 ' + syntheticSnapshot.review.quoteValidThrough + ' · 不可送审'),
+            React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 } },
+              ...groups.map(([id, title]) => React.createElement('button', { key: id, style: button, disabled: !allowed,
+                onClick: () => openSource(id) }, '查看 ' + title + ' 的来源摘录'))),
+            React.createElement('h3', null, '模拟创作边界 · 仅本机'),
+            React.createElement('p', { style: muted }, '虚构情境切换不是可信身份或资源端 ACL；浏览、取消不会建立 DSH Session。'),
+            React.createElement('label', null, '模拟情境 ', React.createElement('select', {
+              'aria-label': '模拟情境', value: scenario, onChange: (event) => {
+                setScenario(event.target.value);
+                setSource('SRC-REQ-01');
+                setBrowsing(false);
+                setIntention(false);
+              },
+            },
+              React.createElement('option', { value: 'owner' }, '虚构项目成员'),
+              React.createElement('option', { value: 'cross_space' }, '跨空间：拒绝'),
+              React.createElement('option', { value: 'revoked' }, '已撤权：拒绝'),
+              React.createElement('option', { value: 'stale_baseline' }, '旧基线：拒绝'))),
+            React.createElement('p', { style: muted }, allowed ? '只能模拟待补证意向，不能提交候选。' : '模拟请求已拒绝：无草稿副作用；来源摘录已收起。'),
+            React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
+              React.createElement('button', { style: button, disabled: !allowed,
+                onClick: () => { if (allowed) setIntention(true); } }, '模拟建立待补证草稿意向'),
+              React.createElement('button', { style: button, disabled: true }, '提交候选（缺证禁用）')),
+            intention && allowed ? React.createElement('p', { role: 'status', style: { ...muted, padding: 12, background: '#faf1dd' } },
+              '本地待补证草稿意向：1 · pending_checks · quote_expired · 非真实会话/草稿') : null,
+            React.createElement('p', { style: muted }, '本区域不会调用 DSH Session；独立草稿修订实验不属于此样本。'))
       );
     }
 
@@ -413,13 +460,21 @@ ${draftReviewClient}
         };
       }, []);
       return React.createElement('main', {
-        style: { padding: 'var(--dsh-frame-top-clearance, 48px) 24px 24px' },
+        style: { padding: 'var(--dsh-frame-top-clearance, 48px) 24px 24px', background: '#f1f5f2', minHeight: '100vh' },
       },
-        React.createElement('h1', null, panelId),
-        React.createElement('p', null, 'v${packageVersion}'),
-        React.createElement('p', null, '状态：' + status),
-        React.createElement(SyntheticStage, null),
-        React.createElement(DraftReview, { sessions }),
+        React.createElement('div', { style: { maxWidth: 1100, margin: '0 auto', padding: '24px', background: '#fff', border: '1px solid #e4ebe6', borderRadius: 12 } },
+          React.createElement(SyntheticStage, null),
+          React.createElement('details', { style: { marginTop: 18, padding: 12, border: '1px solid #e4ebe6', borderRadius: 8 } },
+            React.createElement('summary', null, '技术信息'),
+            React.createElement('p', null, panelId + ' · v${packageVersion}'),
+            React.createElement('p', null, '本机 API 健康：' + status + '；仅代表连接状态，不代表业务就绪。'),
+            React.createElement('p', { style: { overflowWrap: 'anywhere' } }, '来源摘要 SHA-256：' + syntheticSnapshot.sourceDigest),
+            React.createElement('p', { style: { overflowWrap: 'anywhere' } }, '五文件基线 SHA-256：' + syntheticSnapshot.baselineDigest),
+            React.createElement('p', null, 'fixture_only · external_provider_unavailable')),
+          React.createElement('details', { style: { marginTop: 12, padding: 12, border: '1px solid #e4ebe6', borderRadius: 8 } },
+            React.createElement('summary', null, '独立草稿修订实验'),
+            React.createElement('p', null, '与固定材料样本无关；不会将待补证意向转为真实创作会话。'),
+            React.createElement(DraftReview, { sessions }))),
       );
     }
 

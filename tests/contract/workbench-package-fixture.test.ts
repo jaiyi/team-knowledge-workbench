@@ -340,9 +340,8 @@ describe('Workbench package fixture', () => {
     ]);
     components.main?.({});
     components['sidebar.panellist']?.({ size: 18 });
-    expect(elements.some((element) => element.children.includes('team-knowledge-workbench'))).toBe(true);
-    expect(elements.some((element) => element.children.includes('v0.1.0'))).toBe(true);
-    expect(elements.some((element) => element.children.some((child) => typeof child === 'string' && child.includes('未验证')))).toBe(true);
+    expect(elements.some((element) => element.children.includes('team-knowledge-workbench · v0.1.0'))).toBe(true);
+    expect(elements.some((element) => element.children.some((child) => typeof child === 'string' && child.includes('本机 API 健康：未验证')))).toBe(true);
     expect(client).not.toContain('desktopWorkbenches.register');
   });
 
@@ -505,7 +504,10 @@ const fakeDraftPanel = (sessions?: unknown) => {
     cursor = 0;
     const main = panel?.();
     if (!main) throw new Error('missing panel');
-    const draft = main.children.find((child): child is DraftElement => typeof child !== 'string' && child !== null && typeof child.tag === 'function' && child.tag.name === 'DraftReview');
+    const sheet = main.children.find((child): child is DraftElement => typeof child !== 'string' && child !== null && child.tag === 'div');
+    const wrapper = sheet?.children.find((child): child is DraftElement => typeof child !== 'string' && child !== null && child.tag === 'details' &&
+      child.children.some((entry) => typeof entry !== 'string' && entry !== null && entry.tag === 'summary' && entry.children.includes('独立草稿修订实验')));
+    const draft = wrapper?.children.find((child): child is DraftElement => typeof child !== 'string' && child !== null && typeof child.tag === 'function' && child.tag.name === 'DraftReview');
     if (!draft || typeof draft.tag !== 'function') throw new Error('missing draft review');
     return draft.tag(draft.props);
   };
