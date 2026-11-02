@@ -3,7 +3,7 @@ import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import { buildWorkbenchPackageInput } from '../../packages/distribution-adapter/src/workbench-package-fixture.js';
 import { buildSyntheticStageSnapshot } from '../../packages/distribution-adapter/src/synthetic-stage-fixture.js';
-import { buildPrototypeWeeklyReport, prototypeWeeklyReportDigest } from '../../packages/distribution-adapter/src/prototype-weekly-report-fixture.js';
+import { buildPrototypeWeeklyReport, buildPrototypeWeeklyReportFacts, prototypeWeeklyReportDigest } from '../../packages/distribution-adapter/src/prototype-weekly-report-fixture.js';
 
 const sourceCommit = '0123456789abcdef0123456789abcdef01234567';
 type Element = { tag: string | ((props: Record<string, unknown>) => Element); props: Record<string, unknown>; children: Array<Element | string> };
@@ -123,7 +123,10 @@ describe('installed Client synthetic material stage', () => {
     expect(initial).toContain('采购协同周报 · 来源全文阅读');
     expect(initial).not.toContain('PRJ-ORION-7');
     expect(initial).not.toContain('quote_expired');
-    expect(stage.find('button', '事实梳理 · 固定锚点核对').props.disabled).toBe(true);
+    expect(stage.find('button', '事实梳理 · 周报待核索引').props.disabled).not.toBe(true);
+    stage.click('事实梳理 · 周报待核索引');
+    expect(JSON.stringify(stage.render())).toContain('本章没有独立待核事实');
+    stage.click('导入来源 · 固定样本只读');
     expect(stage.find('nav', '材料整理路径').children).toHaveLength(5);
     const reportNav = stage.find('nav', '材料章节');
     expect(reportNav.children.map((entry) => (entry as Element).children[0])).toEqual([
@@ -293,6 +296,72 @@ describe('installed Client synthetic material stage', () => {
     expect(JSON.stringify(mountStage().render())).not.toContain('本地待补证草稿意向：1');
   });
 
+  it('navigates the locked weekly report fact index without promoting plans or crossing into ORION', () => {
+    const stage = mountStage();
+    stage.click('事实梳理 · 周报待核索引');
+    expect(stage.find('nav', '事实梳理 · 材料章节').children).toHaveLength(7);
+    expect(stage.find('nav', '事实梳理 · 材料章节').props.style).toMatchObject({ overflowY: 'auto', maxHeight: 480 });
+    expect(stage.find('article', '本章原文 · 来源信息与标题').props.style).toMatchObject({ overflowY: 'auto', maxHeight: 360 });
+    expect(JSON.stringify(stage.render())).toContain('本章没有独立待核事实');
+    stage.click('一、部门本周核心 KPI 概览');
+    stage.click('查看待核事实 · 五项 KPI 仅为报告期快照');
+    expect(JSON.stringify(stage.find('section', '待核事实详情'))).toContain('行 13');
+    expect(JSON.stringify(stage.find('section', '待核事实详情'))).toContain('有权报表');
+    stage.click('二、本周重点采购工作进展');
+    expect(stage.find('nav', '本章关联的待核事实').children).toHaveLength(5);
+    stage.click('查看待核事实 · 备选料试验、订单与预计交货');
+    expect(JSON.stringify(stage.find('section', '待核事实详情'))).toContain('下单不证明实际交付');
+    stage.click('查看待核事实 · SRM 测试演示与培训不等于已上线');
+    const srm = JSON.stringify(stage.find('section', '待核事实详情'));
+    expect(srm).toContain('受控测试环境');
+    expect(srm).not.toContain('准备 SRM 上线前的配置');
+    stage.click('三、供应商管理与开发');
+    stage.click('查看待核事实 · 批次质量异常与隔离待检');
+    expect(JSON.stringify(stage.find('section', '待核事实详情'))).toContain('根因查明');
+    stage.click('五、采购风险预测及应对措施');
+    stage.click('查看待核事实 · 预计延误与停线风险');
+    expect(JSON.stringify(stage.find('section', '待核事实详情'))).toContain('预测不是实际停线');
+    stage.click('六、下周重点工作计划');
+    expect(JSON.stringify(stage.render())).not.toContain('待核事实详情');
+    expect(stage.find('button', '查看待核事实 · SRM 测试演示与培训不等于已上线').props['data-fact-id']).toBe('shared-srm');
+    stage.click('查看待核事实 · SRM 测试演示与培训不等于已上线');
+    const nextWeek = JSON.stringify(stage.find('section', '待核事实详情'));
+    expect(nextWeek).toContain('准备 SRM 上线前的配置');
+    expect(nextWeek).not.toContain('SRM 模块在受控测试环境');
+    expect(nextWeek).not.toContain('演示包装尾注');
+    expect(stage.find('button', '查看待核事实 · 预计延误与停线风险').props['data-fact-id']).toBe('c-risk');
+    expect(JSON.stringify(stage.render())).not.toContain('quote_expired');
+    expect(JSON.stringify(stage.render())).not.toContain('SRC-REQ-01#P3');
+    expect(JSON.stringify(stage.render())).not.toContain('提交候选');
+    stage.click('导入来源 · 固定样本只读');
+    expect(stage.find('button', '六、下周重点工作计划').props['aria-pressed']).toBe(true);
+    stage.click('事实梳理 · 周报待核索引');
+    expect(JSON.stringify(stage.render())).not.toContain('待核事实详情');
+    stage.click('ORION · 固定锚点测试');
+    expect(stage.find('button', '事实梳理 · 固定锚点核对').props.disabled).not.toBe(true);
+    expect(JSON.stringify(stage.render())).toContain('quote_expired');
+    stage.click('原型周报 · 完整虚构示例');
+    stage.click('事实梳理 · 周报待核索引');
+    expect(stage.find('button', '来源信息与标题').props['aria-pressed']).toBe(true);
+    expect(JSON.stringify(stage.render())).not.toContain('quote_expired');
+    expect(stage.sessions.create).not.toHaveBeenCalled();
+    expect(stage.requests.mock.calls.every(([path]) => path === 'api/team-knowledge-workbench.health')).toBe(true);
+    stage.cleanups.forEach((cleanup) => cleanup());
+  });
+
+  it('refuses missing, duplicated or misplaced fact anchors in the prototype article', () => {
+    const content = buildPrototypeWeeklyReport().content;
+    const facts = buildPrototypeWeeklyReportFacts(content);
+    expect(facts.map((fact) => fact.id)).toEqual(['shared-kpi', 'a-test', 'packaging-fact', 'mro-fact', 'service-fact', 'shared-srm', 'supplier-entry', 'quality-fact', 'price-fact', 'c-risk']);
+    for (const fact of facts) for (const anchor of fact.anchors) {
+      expect(content.split('\n').filter((line) => line.includes(anchor.phrase))).toHaveLength(1);
+      expect(content.split('\n')[anchor.line - 1]).toContain(anchor.phrase);
+    }
+    expect(() => buildPrototypeWeeklyReportFacts(content.replace('采购订单按时交付率 |', '采购订单延迟率 |'))).toThrow('fact anchor mismatch: shared-kpi');
+    expect(() => buildPrototypeWeeklyReportFacts(content.replace('eof', '采购订单按时交付率 |\neof'))).toThrow('fact anchor mismatch: shared-kpi');
+    expect(() => buildPrototypeWeeklyReportFacts(content.replace('采购订单按时交付率 |', '按时交付率 |') + '\n采购订单按时交付率 |')).toThrow('fact anchor mismatch: shared-kpi');
+  });
+
   it('locks the complete prototype article without altering the ORION negative baseline', () => {
     const prototype = readFileSync(new URL('../../docs/产品/可视化原型/index.html', import.meta.url), 'utf8');
     const original = /  const knowledgeSample=`([^`]+)`;/.exec(prototype)?.[1];
@@ -318,8 +387,11 @@ describe('installed Client synthetic material stage', () => {
     stage.click('六、下周重点工作计划');
     expect(JSON.stringify(stage.render())).toContain('演示包装尾注：不是周报正文');
     expect(JSON.stringify(stage.render())).toContain('未读取附件');
-    expect(stage.find('button', '事实梳理 · 固定锚点核对').props.disabled).toBe(true);
-    expect(stage.find('button', '事实梳理 · 固定锚点核对').props.onClick).toBeUndefined();
+    expect(stage.find('button', '事实梳理 · 周报待核索引').props.disabled).not.toBe(true);
+    stage.click('事实梳理 · 周报待核索引');
+    expect(stage.find('button', '事实梳理 · 周报待核索引').props['aria-current']).toBe('step');
+    expect(JSON.stringify(stage.render())).not.toContain('quote_expired');
+    stage.click('导入来源 · 固定样本只读');
     stage.click('ORION · 固定锚点测试');
     expect(JSON.stringify(stage.render())).toContain('quote_expired');
     expect(JSON.stringify(stage.render())).not.toContain('准备 SRM 上线前的配置');

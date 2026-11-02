@@ -1,6 +1,6 @@
 import { computeRuntimeIdentityDigest } from './canonical-digest.js';
 import { buildSyntheticStageSnapshot } from './synthetic-stage-fixture.js';
-import { buildPrototypeWeeklyReport } from './prototype-weekly-report-fixture.js';
+import { buildPrototypeWeeklyReport, buildPrototypeWeeklyReportFacts } from './prototype-weekly-report-fixture.js';
 import type { LocalPackageBuildInput } from './local-package-builder.js';
 
 const packageIdentity = 'team-knowledge-workbench';
@@ -320,6 +320,7 @@ const buildClientEntry = (): string => {
   const syntheticSnapshot = JSON.stringify(buildSyntheticStageSnapshot());
   const prototype = buildPrototypeWeeklyReport();
   const prototypeReport = JSON.stringify(prototype.content);
+  const reportFacts = JSON.stringify(buildPrototypeWeeklyReportFacts(prototype.content));
   return `window.__ModuleLoader__.load({
   id: '@local/${packageIdentity}',
   factory: (require) => {
@@ -329,6 +330,7 @@ const buildClientEntry = (): string => {
     const healthPath = 'api/team-knowledge-workbench.health';
     const syntheticSnapshot = ${syntheticSnapshot};
     const prototypeReport = ${prototypeReport};
+    const reportFacts = ${reportFacts};
     const prototypeReportDigest = '${prototype.digest}';
     const reportLines = prototypeReport.split('\\n');
     const reportStarts = [0, ...reportLines.flatMap((line, index) => index > 0 && /^##\\s/.test(line) ? [index] : [])];
@@ -407,6 +409,7 @@ const buildClientEntry = (): string => {
       const [step, setStep] = React.useState('source');
       const [material, setMaterial] = React.useState('report');
       const [reportSection, setReportSection] = React.useState(0);
+      const [reportFact, setReportFact] = React.useState(null);
       const [scenario, setScenario] = React.useState('owner');
       const [browsing, setBrowsing] = React.useState(false);
       const [source, setSource] = React.useState('SRC-REQ-01');
@@ -429,9 +432,13 @@ const buildClientEntry = (): string => {
         setBrowsing(false);
         setSource('SRC-REQ-01');
         setReportSection(0);
+        setReportFact(null);
         setScenario('owner');
         setIntention(false);
       };
+      const reportSectionFacts = reportFacts.filter((fact) => fact.anchors.some((anchor) => anchor.section === reportSection));
+      const selectedReportFact = reportSectionFacts.find((fact) => fact.id === reportFact);
+      const selectReportSection = (index) => { setReportSection(index); setReportFact(null); };
       return React.createElement('section', { style: { color: '#202d29', lineHeight: 1.55 } },
         React.createElement('header', { style: { marginBottom: 17 } },
           React.createElement('p', { style: { ...muted, fontSize: 12, fontWeight: 650, margin: '0 0 5px' } }, 'WORKBENCH / 提炼知识&经验'),
@@ -455,8 +462,9 @@ const buildClientEntry = (): string => {
           React.createElement('button', { style: { ...button, background: step === 'source' ? '#eaf1eb' : '#fff' },
             'aria-current': step === 'source' ? 'step' : undefined, onClick: () => setStep('source') }, '导入来源 · 固定样本只读'),
           React.createElement('button', { style: { ...button, background: step === 'review' ? '#eaf1eb' : '#fff' },
-            'aria-current': step === 'review' ? 'step' : undefined, disabled: material !== 'orion',
-            onClick: material === 'orion' ? () => setStep('review') : undefined }, '事实梳理 · 固定锚点核对'),
+            'aria-current': step === 'review' ? 'step' : undefined,
+            onClick: () => { setStep('review'); if (material === 'report') setReportFact(null); } },
+            material === 'report' ? '事实梳理 · 周报待核索引' : '事实梳理 · 固定锚点核对'),
           ...['经验总结 · 未接入', '加入知识库 · 未接入', '优化已有 Skill · 未接入'].map((name) =>
             React.createElement('button', { key: name, style: unavailable, disabled: true }, name))),
         step === 'source' && material === 'report' ? React.createElement('section', { style: card },
@@ -466,11 +474,42 @@ const buildClientEntry = (): string => {
             React.createElement('nav', { 'aria-label': '材料章节', style: { display: 'grid', alignContent: 'start', gap: 6, maxHeight: 480, overflowY: 'auto', overscrollBehavior: 'contain' } },
               ...reportSections.map((section, index) => React.createElement('button', { key: section.start, type: 'button',
                 'aria-pressed': reportSection === index, style: { ...button, textAlign: 'left', background: reportSection === index ? '#eaf1eb' : '#fff' },
-                onClick: () => setReportSection(index) }, section.title,
+                onClick: () => selectReportSection(index) }, section.title,
                 React.createElement('small', { style: { display: 'block', color: '#276b48', fontSize: 11 } }, '行 ' + (section.start + 1) + '–' + section.end)))),
             React.createElement('article', { role: 'region', 'aria-label': '周报原文 · ' + reportSections[reportSection].title,
               key: reportSection, tabIndex: 0, style: { minWidth: 0, maxHeight: 480, overflowY: 'auto', overscrollBehavior: 'contain', padding: '20px 23px', background: '#fbfcfa', border: '1px solid #e4ebe6', borderRadius: 8, overflowWrap: 'anywhere', fontSize: 13, lineHeight: 1.75 } },
               ...reportDocument(reportSections[reportSection].body)))) :
+        step === 'review' && material === 'report' ? React.createElement('section', { style: card },
+          React.createElement('h2', null, '事实梳理 · 周报待核索引'),
+          React.createElement('p', { style: muted }, '同一份内置虚构周报的人工编排索引；不是自动提取、来源授权或权威事实核证。只读待核内容，不创建会话、草稿或团队资产。'),
+          React.createElement('div', { className: 'tkw-source-layout', style: { display: 'grid', gridTemplateColumns: 'minmax(170px, 1fr) minmax(0, 3fr)', gap: 14, minWidth: 0 } },
+            React.createElement('nav', { 'aria-label': '事实梳理 · 材料章节', style: { display: 'grid', alignContent: 'start', gap: 6, maxHeight: 480, overflowY: 'auto', overscrollBehavior: 'contain' } },
+              ...reportSections.map((section, index) => React.createElement('button', { key: section.start, type: 'button',
+                'aria-pressed': reportSection === index, style: { ...button, textAlign: 'left', background: reportSection === index ? '#eaf1eb' : '#fff' },
+                onClick: () => selectReportSection(index) }, section.title,
+                React.createElement('small', { style: { display: 'block', color: '#276b48', fontSize: 11 } },
+                  '行 ' + (section.start + 1) + '–' + section.end + ' · ' + reportFacts.filter((fact) => fact.anchors.some((anchor) => anchor.section === index)).length + ' 条关联事实')))),
+            React.createElement('div', { style: { minWidth: 0 } },
+              React.createElement('article', { role: 'region', 'aria-label': '本章原文 · ' + reportSections[reportSection].title,
+                key: reportSection, tabIndex: 0, style: { minWidth: 0, maxHeight: 360, overflowY: 'auto', overscrollBehavior: 'contain', padding: '20px 23px', background: '#fbfcfa', border: '1px solid #e4ebe6', borderRadius: 8, overflowWrap: 'anywhere', fontSize: 13, lineHeight: 1.75 } },
+                ...reportDocument(reportSections[reportSection].body)),
+              React.createElement('p', { style: muted }, '行号由锁定的周报原文唯一短句定位；附件未读取，eof 后的包装尾注不参与事实索引。'),
+              React.createElement('h3', null, '本章关联的待核事实'),
+              reportSectionFacts.length ? React.createElement('nav', { 'aria-label': '本章关联的待核事实', style: { display: 'grid', gap: 6 } },
+                ...reportSectionFacts.map((fact) => React.createElement('button', { key: fact.id, type: 'button', 'data-fact-id': fact.id,
+                  'aria-pressed': reportFact === fact.id, style: { ...button, textAlign: 'left', background: reportFact === fact.id ? '#eaf1eb' : '#fff' },
+                  onClick: () => setReportFact(fact.id) }, '查看待核事实 · ' + fact.title))) :
+                React.createElement('p', { role: 'status', style: muted }, '本章没有独立待核事实；标题与报告期只作来源背景，不为凑数量造条目。'),
+              selectedReportFact ? React.createElement('section', { 'aria-label': '待核事实详情', style: { ...card, background: '#fbfcfa', marginTop: 14 } },
+                React.createElement('h3', null, selectedReportFact.title + ' · 人工编排待核'),
+                React.createElement('p', null, '时态：' + selectedReportFact.when),
+                React.createElement('strong', null, '本章来源定位（原文短句，非核证）'),
+                ...selectedReportFact.anchors.filter((anchor) => anchor.section === reportSection).map((anchor) =>
+                  React.createElement('p', { key: anchor.line }, '行 ' + anchor.line + ' · “' + anchor.phrase + '”')),
+                React.createElement('p', null, '来源说法（人工概述）：' + selectedReportFact.claim),
+                React.createElement('p', null, '当前梳理 · 待核：' + selectedReportFact.interpretation),
+                React.createElement('p', null, '仍需核查：' + selectedReportFact.gap),
+                React.createElement('p', { style: muted }, '只读人工索引；未读回原件、附件、权威报表或已有知识版本，不能提交或认作已核事实。')) : null))) :
         step === 'source' ? React.createElement('section', { style: card },
           React.createElement('h2', null, 'ORION 来源摘录 · 只读'),
           React.createElement('p', { style: muted }, '固定虚构 Markdown 中四条独立来源记录的 11 个原句锚点，并非四份完整原件；同一文件另有复核评论。未导入文件、未读取附件，也不代表五份基线文件的全文解析。'),
