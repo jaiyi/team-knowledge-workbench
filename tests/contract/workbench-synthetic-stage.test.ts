@@ -67,7 +67,9 @@ function mountStage() {
   const render = () => {
     const root = renderPanel();
     const sheet = root.children.find((child): child is Element => typeof child !== 'string' && child !== null && child.tag === 'div');
-    const stage = sheet?.children.find((child): child is Element => typeof child !== 'string' && child !== null && typeof child.tag === 'function' && child.tag.name === 'SyntheticStage');
+    const workspace = sheet?.children.find((child): child is Element => typeof child !== 'string' && child !== null && child.tag === 'div');
+    const content = workspace?.children.find((child): child is Element => typeof child !== 'string' && child !== null && child.tag === 'div');
+    const stage = content?.children.find((child): child is Element => typeof child !== 'string' && child !== null && typeof child.tag === 'function' && child.tag.name === 'SyntheticStage');
     if (!stage || typeof stage.tag !== 'function') throw new Error('missing synthetic stage');
     return stage.tag(stage.props);
   };
@@ -121,19 +123,27 @@ describe('installed Client synthetic material stage', () => {
     expect(stage.find('button', '导入来源 · 固定样本只读').props.disabled).not.toBe(true);
     expect(stage.find('button', '事实梳理 · 固定锚点核对').props.disabled).not.toBe(true);
     expect(stage.find('nav', '材料整理路径').children).toHaveLength(5);
-    expect(() => stage.find('nav', 'Workbench 五个并列入口')).toThrow('missing nav');
-    const aside = stage.find('aside', 'Workbench 入口状态');
-    expect(aside.children[0]).toMatchObject({ tag: 'details' });
-    const entryDetails = aside.children[0] as Element;
-    expect(entryDetails.props.open).not.toBe(true);
-    expect(entryDetails.children[0]).toMatchObject({ tag: 'summary', children: ['Workbench 入口状态'] });
-    expect(entryDetails.children).toHaveLength(6);
-    expect(JSON.stringify(aside)).toContain('提炼知识&经验 · 当前固定样本');
-    for (const name of ['我的工作台', '打磨可复用的技能', '连接业务数据源', '团队业务资产大盘']) {
-      expect(JSON.stringify(aside)).toContain(name + ' · 尚未接入');
+    const workspace = sheet?.children.find((child): child is Element => typeof child !== 'string' && child !== null && child.tag === 'div');
+    expect(workspace?.props.style).toMatchObject({ display: 'flex', flexWrap: 'wrap' });
+    const navigation = stage.findTag(workspace ?? '', 'nav');
+    expect(navigation?.props['aria-label']).toBe('Workbench 五个并列入口');
+    expect(workspace?.children[0]).toBe(navigation);
+    expect(navigation?.children).toHaveLength(6);
+    const entries = navigation?.children.slice(1) as Element[];
+    expect(entries.map((entry) => entry.children[0])).toEqual([
+      '我的工作台', '提炼知识&经验', '打磨可复用的技能', '连接业务数据源', '团队业务资产大盘',
+    ]);
+    expect(entries[1]?.props).toMatchObject({ 'aria-current': 'page', disabled: false });
+    expect(entries[1]?.children[1]).toMatchObject({ tag: 'small', children: ['当前固定样本'] });
+    for (const entry of entries.filter((_, index) => index !== 1)) {
+      expect(entry.props.disabled).toBe(true);
+      expect(entry.props['aria-current']).toBeUndefined();
+      expect(entry.children[1]).toMatchObject({ tag: 'small', children: ['尚未接入 · 当前仅开放固定材料样本'] });
+      expect(entry.props.onClick).toBeUndefined();
     }
-    const sections = stage.render().children.filter((child): child is Element => typeof child !== 'string' && child !== null);
-    expect(sections.findIndex((child) => child.tag === 'aside')).toBeGreaterThan(sections.findIndex((child) => child.tag === 'section'));
+    expect(JSON.stringify(stage.renderPanel())).not.toContain('Workbench 入口状态');
+    expect(stage.sessions.create).not.toHaveBeenCalled();
+    expect(stage.requests.mock.calls.every(([path]) => path === 'api/team-knowledge-workbench.health')).toBe(true);
     expect(stage.find('button', '导入来源 · 固定样本只读').props['aria-current']).toBe('step');
     for (const label of ['经验总结 · 未接入', '加入知识库 · 未接入', '优化已有 Skill · 未接入']) {
       expect(stage.find('button', label).props.disabled).toBe(true);

@@ -344,7 +344,6 @@ const buildClientEntry = (): string => {
       const button = { padding: '9px 12px', borderRadius: 6, border: '1px solid #cbd8d0', background: '#fff', color: '#245b43' };
       const unavailable = { ...button, background: '#f7f9f6', color: '#687a70' };
       const openSource = (id) => { if (allowed) { setSource(id); setBrowsing(true); setStep('source'); } };
-      const entries = ['我的工作台', '提炼知识&经验', '打磨可复用的技能', '连接业务数据源', '团队业务资产大盘'];
       return React.createElement('section', { style: { color: '#202d29', lineHeight: 1.55 } },
         React.createElement('header', { style: { marginBottom: 20 } },
           React.createElement('p', { style: { ...muted, margin: '0 0 6px' } }, 'WORKBENCH / 提炼知识&经验 · 固定样本'),
@@ -407,12 +406,7 @@ const buildClientEntry = (): string => {
               React.createElement('button', { style: button, disabled: true }, '提交候选（缺证禁用）')),
             intention && allowed ? React.createElement('p', { role: 'status', style: { ...muted, padding: 12, background: '#faf1dd' } },
               '本地待补证草稿意向：1 · pending_checks · quote_expired · 非真实会话/草稿') : null,
-            React.createElement('p', { style: muted }, '本区域不会调用 DSH Session；独立草稿修订实验不属于此样本。')),
-        React.createElement('aside', { 'aria-label': 'Workbench 入口状态', style: { ...card, background: '#f7f9f6' } },
-          React.createElement('details', null,
-            React.createElement('summary', null, 'Workbench 入口状态'),
-            ...entries.map((name, index) => React.createElement('p', { key: name, style: { ...muted, margin: '8px 0 0' } },
-              name + (index === 1 ? ' · 当前固定样本' : ' · 尚未接入')))))
+            React.createElement('p', { style: muted }, '本区域不会调用 DSH Session；独立草稿修订实验不属于此样本。'))
       );
     }
 
@@ -464,7 +458,17 @@ ${draftReviewClient}
         style: { flex: '1 1 0', minHeight: 0, minWidth: 0, width: '100%', boxSizing: 'border-box', overflowY: 'auto', padding: 'var(--dsh-frame-top-clearance, 48px) 24px 24px', background: '#f1f5f2' },
       },
         React.createElement('div', { style: { maxWidth: 1100, margin: '0 auto', padding: '24px', background: '#fff', border: '1px solid #e4ebe6', borderRadius: 12 } },
-          React.createElement(SyntheticStage, null),
+          React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 24 } },
+            React.createElement('nav', { 'aria-label': 'Workbench 五个并列入口', style: { flex: '1 1 190px', display: 'grid', gap: 8 } },
+              React.createElement('h2', { style: { fontSize: 14, margin: '0 0 4px', color: '#52615b' } }, 'Workbench 入口'),
+              ...['我的工作台', '提炼知识&经验', '打磨可复用的技能', '连接业务数据源', '团队业务资产大盘'].map((name, index) =>
+                React.createElement('button', {
+                  key: name, type: 'button', disabled: index !== 1, 'aria-current': index === 1 ? 'page' : undefined,
+                  style: { textAlign: 'left', padding: '12px', borderRadius: 8, border: index === 1 ? '1px solid #a5c2ae' : '1px solid #e4ebe6',
+                    background: index === 1 ? '#eaf1eb' : '#f7f9f6', color: index === 1 ? '#245b43' : '#687a70', overflowWrap: 'anywhere' },
+                }, name, React.createElement('small', { style: { display: 'block', marginTop: 4 } },
+                  index === 1 ? '当前固定样本' : '尚未接入 · 当前仅开放固定材料样本')))),
+            React.createElement('div', { style: { flex: '4 1 560px', minWidth: 0 } }, React.createElement(SyntheticStage, null))),
           React.createElement('details', { style: { marginTop: 18, padding: 12, border: '1px solid #e4ebe6', borderRadius: 8 } },
             React.createElement('summary', null, '技术信息'),
             React.createElement('p', null, panelId + ' · v${packageVersion}'),
