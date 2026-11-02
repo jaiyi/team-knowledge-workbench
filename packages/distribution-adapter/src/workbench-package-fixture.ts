@@ -1,4 +1,5 @@
 import { computeRuntimeIdentityDigest } from './canonical-digest.js';
+import { buildSyntheticStageSnapshot } from './synthetic-stage-fixture.js';
 import type { LocalPackageBuildInput } from './local-package-builder.js';
 
 const packageIdentity = 'team-knowledge-workbench';
@@ -314,13 +315,58 @@ const draftReviewClient = `    function completedRevision(snapshot, requestId) {
     }
 `;
 
-const buildClientEntry = (): string => `window.__ModuleLoader__.load({
+const buildClientEntry = (): string => {
+  const syntheticSnapshot = JSON.stringify(buildSyntheticStageSnapshot());
+  return `window.__ModuleLoader__.load({
   id: '@local/${packageIdentity}',
   factory: (require) => {
     const module = { exports: {} };
     const React = require('react');
     const panelId = '${packageIdentity}';
     const healthPath = 'api/team-knowledge-workbench.health';
+    const syntheticSnapshot = ${syntheticSnapshot};
+
+    function SyntheticStage() {
+      const [scenario, setScenario] = React.useState('owner');
+      const [browsing, setBrowsing] = React.useState(false);
+      const [intention, setIntention] = React.useState(false);
+      const entries = ['我的工作台', '提炼知识&经验', '打磨可复用的技能', '连接业务数据源', '团队业务资产大盘'];
+      const allowed = scenario === 'owner';
+      return React.createElement('section', null,
+        React.createElement('h2', null, '虚构样本 · 材料核证与创作边界'),
+        React.createElement('p', null, 'PRJ-ORION-7 / AS-ORION · 2026-07-15 · 本机模拟，无真实授权'),
+        React.createElement('p', null, '材料：' + syntheticSnapshot.review.blockers.join(', ') +
+          '；报价有效至 ' + syntheticSnapshot.review.quoteValidThrough + '；不可送审'),
+        React.createElement('p', null, '质量审计结论缺失；R3 适配试验未完成；2026-08-31 是内部采购目标，不是供应商承诺'),
+        React.createElement('p', null, '来源摘要 SHA-256：' + syntheticSnapshot.sourceDigest),
+        React.createElement('p', null, '五文件基线 SHA-256：' + syntheticSnapshot.baselineDigest),
+        React.createElement('ul', null, ...entries.map((name, index) =>
+          React.createElement('li', { key: name }, name + ' · fixture_only' +
+            (index === 0 ? '' : ' · external_provider_unavailable')))),
+        React.createElement('button', { disabled: !allowed, onClick: () => { if (allowed) setBrowsing(true); } }, '浏览来源锚点'),
+        React.createElement('button', { onClick: () => setBrowsing(false) }, '取消浏览'),
+        browsing && allowed ? React.createElement('ul', null, ...syntheticSnapshot.anchors.map((anchor) =>
+          React.createElement('li', { key: anchor.id }, anchor.id + '：' + anchor.text))) : null,
+        React.createElement('label', null, '模拟情境 ', React.createElement('select', {
+          'aria-label': '模拟情境', value: scenario, onChange: (event) => {
+            setScenario(event.target.value);
+            setBrowsing(false);
+            setIntention(false);
+          },
+        },
+          React.createElement('option', { value: 'owner' }, '虚构项目成员'),
+          React.createElement('option', { value: 'cross_space' }, '跨空间：拒绝'),
+          React.createElement('option', { value: 'revoked' }, '已撤权：拒绝'),
+          React.createElement('option', { value: 'stale_baseline' }, '旧基线：拒绝'))),
+        React.createElement('p', null, allowed ? '仅可模拟待补证草稿，不能提交候选' : '模拟请求已拒绝：无草稿副作用'),
+        React.createElement('button', {
+          disabled: !allowed, onClick: () => { if (allowed) setIntention(true); },
+        }, '模拟建立待补证草稿意向'),
+        intention ? React.createElement('p', null, '本地待补证草稿意向：1 · pending_checks · quote_expired · 非真实会话/草稿') : null,
+        React.createElement('button', { disabled: true }, '提交候选（缺证禁用）'),
+        React.createElement('p', null, '本区域不会调用 DSH Session；下方事实/经验草稿审核是独立功能。')
+      );
+    }
 
 ${draftReviewClient}
     function WorkbenchPanel({ sessions }) {
@@ -372,6 +418,7 @@ ${draftReviewClient}
         React.createElement('h1', null, panelId),
         React.createElement('p', null, 'v${packageVersion}'),
         React.createElement('p', null, '状态：' + status),
+        React.createElement(SyntheticStage, null),
         React.createElement(DraftReview, { sessions }),
       );
     }
@@ -397,6 +444,7 @@ ${draftReviewClient}
   },
 });
 `;
+};
 
 const buildCordisRegistration = (sourceCommit: string, backendEndpoint?: string): string => {
   const runtimeIdentityDigest = computeRuntimeIdentityDigest({

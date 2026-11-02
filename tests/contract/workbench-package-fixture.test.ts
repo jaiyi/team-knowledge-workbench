@@ -505,7 +505,7 @@ const fakeDraftPanel = (sessions?: unknown) => {
     cursor = 0;
     const main = panel?.();
     if (!main) throw new Error('missing panel');
-    const draft = main.children.find((child): child is DraftElement => typeof child !== 'string' && typeof child.tag === 'function');
+    const draft = main.children.find((child): child is DraftElement => typeof child !== 'string' && child !== null && typeof child.tag === 'function' && child.tag.name === 'DraftReview');
     if (!draft || typeof draft.tag !== 'function') throw new Error('missing draft review');
     return draft.tag(draft.props);
   };
