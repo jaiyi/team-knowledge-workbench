@@ -84,9 +84,17 @@ function mountStage() {
     if (!match) throw new Error(`missing ${tag}: ${label}`);
     return match;
   };
+  const findTag = (node: Element | string, tag: string): Element | undefined => {
+    if (node === null || typeof node === 'string') return undefined;
+    if (node.tag === tag) return node;
+    for (const child of node.children) {
+      const match = findTag(child, tag);
+      if (match) return match;
+    }
+  };
   const click = (label: string) => (find('button', label).props.onClick as () => void)();
   const choose = (value: string) => (find('select', '模拟情境').props.onChange as (event: { target: { value: string } }) => void)({ target: { value } });
-  return { client, render, renderPanel, find, click, choose, sessions, requests, cleanups };
+  return { client, render, renderPanel, find, findTag, click, choose, sessions, requests, cleanups };
 }
 
 describe('installed Client synthetic material stage', () => {
@@ -95,7 +103,8 @@ describe('installed Client synthetic material stage', () => {
     const page = stage.renderPanel();
     const sheet = page.children.find((child): child is Element => typeof child !== 'string' && child !== null && child.tag === 'div');
     const initial = JSON.stringify(stage.render());
-    expect(page.props.style).toMatchObject({ background: '#f1f5f2' });
+    expect(page.props.style).toMatchObject({ background: '#f1f5f2', flex: '1 1 0', minHeight: 0, minWidth: 0, boxSizing: 'border-box', overflowY: 'auto' });
+    expect(page.props.style).not.toHaveProperty('minHeight', '100vh');
     const details = sheet?.children.filter((child): child is Element => typeof child !== 'string' && child !== null && child.tag === 'details') ?? [];
     expect(details).toHaveLength(2);
     expect(details.every((element) => element.props.open !== true)).toBe(true);
@@ -111,8 +120,20 @@ describe('installed Client synthetic material stage', () => {
     expect(initial).not.toContain('sourceDigest');
     expect(stage.find('button', '导入来源 · 固定样本只读').props.disabled).not.toBe(true);
     expect(stage.find('button', '事实梳理 · 固定锚点核对').props.disabled).not.toBe(true);
-    expect(stage.find('nav', 'Workbench 五个并列入口').children).toHaveLength(5);
     expect(stage.find('nav', '材料整理路径').children).toHaveLength(5);
+    expect(() => stage.find('nav', 'Workbench 五个并列入口')).toThrow('missing nav');
+    const aside = stage.find('aside', 'Workbench 入口状态');
+    expect(aside.children[0]).toMatchObject({ tag: 'details' });
+    const entryDetails = aside.children[0] as Element;
+    expect(entryDetails.props.open).not.toBe(true);
+    expect(entryDetails.children[0]).toMatchObject({ tag: 'summary', children: ['Workbench 入口状态'] });
+    expect(entryDetails.children).toHaveLength(6);
+    expect(JSON.stringify(aside)).toContain('提炼知识&经验 · 当前固定样本');
+    for (const name of ['我的工作台', '打磨可复用的技能', '连接业务数据源', '团队业务资产大盘']) {
+      expect(JSON.stringify(aside)).toContain(name + ' · 尚未接入');
+    }
+    const sections = stage.render().children.filter((child): child is Element => typeof child !== 'string' && child !== null);
+    expect(sections.findIndex((child) => child.tag === 'aside')).toBeGreaterThan(sections.findIndex((child) => child.tag === 'section'));
     expect(stage.find('button', '导入来源 · 固定样本只读').props['aria-current']).toBe('step');
     for (const label of ['经验总结 · 未接入', '加入知识库 · 未接入', '优化已有 Skill · 未接入']) {
       expect(stage.find('button', label).props.disabled).toBe(true);
@@ -161,6 +182,7 @@ describe('installed Client synthetic material stage', () => {
     expect(JSON.stringify(stage.renderPanel())).toContain('external_provider_unavailable');
     expect(initial).not.toContain('SRC-REQ-01#P3`：');
     stage.click('浏览来源锚点');
+    expect(stage.findTag(stage.render(), 'article')?.props.style).toMatchObject({ maxHeight: 320, overflowY: 'auto' });
     expect(JSON.stringify(stage.render())).toContain('SRC-REQ-01#P3');
     expect(JSON.stringify(stage.render())).not.toContain('SRC-QA-02#P1');
     stage.click('取消浏览');

@@ -350,10 +350,6 @@ const buildClientEntry = (): string => {
           React.createElement('p', { style: { ...muted, margin: '0 0 6px' } }, 'WORKBENCH / 提炼知识&经验 · 固定样本'),
           React.createElement('h1', { style: { fontSize: 24, margin: '0 0 8px' } }, '从来源看清哪些结论还不能成立'),
           React.createElement('p', { style: muted }, 'PRJ-ORION-7 / AS-ORION · 评测日 2026-07-15 · 虚构样本，本机模拟，无真实授权')),
-        React.createElement('nav', { 'aria-label': 'Workbench 五个并列入口', style: { ...card, display: 'flex', flexWrap: 'wrap', gap: 10 } },
-          ...entries.map((name, index) => React.createElement('span', { key: name,
-            style: { padding: '7px 10px', borderRadius: 6, background: index === 1 ? '#eaf1eb' : '#f7f9f6', fontSize: 12 } },
-            name + (index === 1 ? ' · 当前固定样本' : ' · 尚未接入')))),
         React.createElement('div', { role: 'status', style: { ...card, borderColor: '#e7d9ae', background: '#faf1dd' } },
           React.createElement('strong', { style: { color: '#754d16', fontSize: 17 } }, '报价过期 · 不可送审'),
           React.createElement('p', { style: { margin: '7px 0' } }, 'quote_expired：报价有效至 ' + syntheticSnapshot.review.quoteValidThrough +
@@ -411,7 +407,12 @@ const buildClientEntry = (): string => {
               React.createElement('button', { style: button, disabled: true }, '提交候选（缺证禁用）')),
             intention && allowed ? React.createElement('p', { role: 'status', style: { ...muted, padding: 12, background: '#faf1dd' } },
               '本地待补证草稿意向：1 · pending_checks · quote_expired · 非真实会话/草稿') : null,
-            React.createElement('p', { style: muted }, '本区域不会调用 DSH Session；独立草稿修订实验不属于此样本。'))
+            React.createElement('p', { style: muted }, '本区域不会调用 DSH Session；独立草稿修订实验不属于此样本。')),
+        React.createElement('aside', { 'aria-label': 'Workbench 入口状态', style: { ...card, background: '#f7f9f6' } },
+          React.createElement('details', null,
+            React.createElement('summary', null, 'Workbench 入口状态'),
+            ...entries.map((name, index) => React.createElement('p', { key: name, style: { ...muted, margin: '8px 0 0' } },
+              name + (index === 1 ? ' · 当前固定样本' : ' · 尚未接入')))))
       );
     }
 
@@ -460,7 +461,7 @@ ${draftReviewClient}
         };
       }, []);
       return React.createElement('main', {
-        style: { padding: 'var(--dsh-frame-top-clearance, 48px) 24px 24px', background: '#f1f5f2', minHeight: '100vh' },
+        style: { flex: '1 1 0', minHeight: 0, minWidth: 0, width: '100%', boxSizing: 'border-box', overflowY: 'auto', padding: 'var(--dsh-frame-top-clearance, 48px) 24px 24px', background: '#f1f5f2' },
       },
         React.createElement('div', { style: { maxWidth: 1100, margin: '0 auto', padding: '24px', background: '#fff', border: '1px solid #e4ebe6', borderRadius: 12 } },
           React.createElement(SyntheticStage, null),
