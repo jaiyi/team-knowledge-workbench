@@ -107,6 +107,13 @@ describe('installed Client synthetic material stage', () => {
     const initial = JSON.stringify(stage.render());
     expect(page.props.style).toMatchObject({ background: '#f1f5f2', flex: '1 1 0', minHeight: 0, minWidth: 0, boxSizing: 'border-box', overflowY: 'auto' });
     expect(page.props.style).not.toHaveProperty('minHeight', '100vh');
+    expect(page.props.style).toHaveProperty('containerType', 'inline-size');
+    const localStyle = stage.findTag(page, 'style');
+    expect(localStyle?.children[0]).toContain('grid-template-columns: 232px minmax(0, 1fr)');
+    expect(localStyle?.children[0]).toContain('@container (max-width: 760px)');
+    expect(localStyle?.children[0]).toContain('grid-template-columns: minmax(0, 1fr)');
+    expect(sheet?.props.className).toBe('tkw-sheet');
+    expect(sheet?.props.style).not.toHaveProperty('maxWidth');
     const details = sheet?.children.filter((child): child is Element => typeof child !== 'string' && child !== null && child.tag === 'details') ?? [];
     expect(details).toHaveLength(2);
     expect(details.every((element) => element.props.open !== true)).toBe(true);
@@ -124,10 +131,15 @@ describe('installed Client synthetic material stage', () => {
     expect(stage.find('button', '事实梳理 · 固定锚点核对').props.disabled).not.toBe(true);
     expect(stage.find('nav', '材料整理路径').children).toHaveLength(5);
     const workspace = sheet?.children.find((child): child is Element => typeof child !== 'string' && child !== null && child.tag === 'div');
-    expect(workspace?.props.style).toMatchObject({ display: 'flex', flexWrap: 'wrap' });
+    expect(workspace?.props.className).toBe('tkw-workspace');
     const navigation = stage.findTag(workspace ?? '', 'nav');
     expect(navigation?.props['aria-label']).toBe('Workbench 五个并列入口');
     expect(workspace?.children[0]).toBe(navigation);
+    expect(navigation?.props.className).toBe('tkw-navigation');
+    expect(navigation?.children[0]).toMatchObject({ tag: 'div', children: [
+      { tag: 'strong', props: {}, children: ['Team Knowledge Workbench'] },
+      { tag: 'small', props: {}, children: ['团队知识复利工作台'] },
+    ] });
     expect(navigation?.children).toHaveLength(6);
     const entries = navigation?.children.slice(1) as Element[];
     expect(entries.map((entry) => entry.children[0])).toEqual([
@@ -142,6 +154,13 @@ describe('installed Client synthetic material stage', () => {
       expect(entry.props.onClick).toBeUndefined();
     }
     expect(JSON.stringify(stage.renderPanel())).not.toContain('Workbench 入口状态');
+    expect(initial).toContain('WORKBENCH / 提炼知识&经验');
+    expect(initial).toContain('从真实过程里提炼可核对的依据');
+    expect(initial).toContain('尊重原始语境，把有权使用的过程材料中的事实、判断和适用边界整理成他人能正确使用的依据；不预设必须新建知识。');
+    expect(initial).toContain('这里处理来源与待核内容，不是文件上传即入库');
+    expect(initial).toContain('固定虚构样本');
+    expect(initial).toContain('未导入整份材料');
+    expect(initial).not.toContain('从来源看清哪些结论还不能成立');
     expect(stage.sessions.create).not.toHaveBeenCalled();
     expect(stage.requests.mock.calls.every(([path]) => path === 'api/team-knowledge-workbench.health')).toBe(true);
     expect(stage.find('button', '导入来源 · 固定样本只读').props['aria-current']).toBe('step');

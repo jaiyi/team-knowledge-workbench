@@ -339,16 +339,20 @@ const buildClientEntry = (): string => {
         ['SRC-QUOTE-03', '报价摘要 · 2026-06-18'],
         ['SRC-CHANGE-04', '工程变更备忘 · 2026-07-08'],
       ];
-      const card = { background: '#fff', border: '1px solid #e4ebe6', borderRadius: 9, padding: '18px 20px', marginBottom: 16 };
+      const card = { background: '#fff', border: '1px solid #e4ebe6', borderRadius: 8, padding: '16px', marginBottom: 14, overflowWrap: 'anywhere' };
       const muted = { color: '#52615b', fontSize: 13, lineHeight: 1.6 };
-      const button = { padding: '9px 12px', borderRadius: 6, border: '1px solid #cbd8d0', background: '#fff', color: '#245b43' };
+      const button = { padding: '9px 12px', borderRadius: 6, border: '1px solid #cbd8d0', background: '#fff', color: '#245b43', whiteSpace: 'normal', overflowWrap: 'anywhere' };
       const unavailable = { ...button, background: '#f7f9f6', color: '#687a70' };
       const openSource = (id) => { if (allowed) { setSource(id); setBrowsing(true); setStep('source'); } };
       return React.createElement('section', { style: { color: '#202d29', lineHeight: 1.55 } },
-        React.createElement('header', { style: { marginBottom: 20 } },
-          React.createElement('p', { style: { ...muted, margin: '0 0 6px' } }, 'WORKBENCH / 提炼知识&经验 · 固定样本'),
-          React.createElement('h1', { style: { fontSize: 24, margin: '0 0 8px' } }, '从来源看清哪些结论还不能成立'),
-          React.createElement('p', { style: muted }, 'PRJ-ORION-7 / AS-ORION · 评测日 2026-07-15 · 虚构样本，本机模拟，无真实授权')),
+        React.createElement('header', { style: { marginBottom: 17 } },
+          React.createElement('p', { style: { ...muted, fontSize: 12, fontWeight: 650, margin: '0 0 5px' } }, 'WORKBENCH / 提炼知识&经验'),
+          React.createElement('h1', { style: { fontSize: 24, lineHeight: 1.35, margin: '0 0 5px', overflowWrap: 'anywhere' } }, '从真实过程里提炼可核对的依据'),
+          React.createElement('p', { style: { color: '#42544a', fontSize: 14, margin: 0 } }, '尊重原始语境，把有权使用的过程材料中的事实、判断和适用边界整理成他人能正确使用的依据；不预设必须新建知识。')),
+        React.createElement('aside', { style: { ...card, background: '#f3f7f3', borderLeft: '3px solid #87ae94', fontSize: 13 } },
+          React.createElement('strong', null, '这里处理来源与待核内容，不是文件上传即入库'),
+          React.createElement('p', { style: { margin: '6px 0 0' } }, '从获准材料开始；核来源当时说法、证据与反例，必要时才提出知识候选。此页仅展示固定虚构样本的段落摘录，未导入整份材料；无真实授权，请勿输入真实资料。')),
+        React.createElement('p', { style: { ...muted, margin: '0 0 14px' } }, 'PRJ-ORION-7 / AS-ORION · 评测日 2026-07-15 · 本机模拟，不代表正式创作会话或可用的材料导入'),
         React.createElement('div', { role: 'status', style: { ...card, borderColor: '#e7d9ae', background: '#faf1dd' } },
           React.createElement('strong', { style: { color: '#754d16', fontSize: 17 } }, '报价过期 · 不可送审'),
           React.createElement('p', { style: { margin: '7px 0' } }, 'quote_expired：报价有效至 ' + syntheticSnapshot.review.quoteValidThrough +
@@ -455,21 +459,37 @@ ${draftReviewClient}
         };
       }, []);
       return React.createElement('main', {
-        style: { flex: '1 1 0', minHeight: 0, minWidth: 0, width: '100%', boxSizing: 'border-box', overflowY: 'auto', padding: 'var(--dsh-frame-top-clearance, 48px) 24px 24px', background: '#f1f5f2' },
+        style: { flex: '1 1 0', minHeight: 0, minWidth: 0, width: '100%', boxSizing: 'border-box', overflowY: 'auto', containerType: 'inline-size', padding: 'var(--dsh-frame-top-clearance, 48px) 12px 12px', background: '#f1f5f2' },
       },
-        React.createElement('div', { style: { maxWidth: 1100, margin: '0 auto', padding: '24px', background: '#fff', border: '1px solid #e4ebe6', borderRadius: 12 } },
-          React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 24 } },
-            React.createElement('nav', { 'aria-label': 'Workbench 五个并列入口', style: { flex: '1 1 190px', display: 'grid', gap: 8 } },
-              React.createElement('h2', { style: { fontSize: 14, margin: '0 0 4px', color: '#52615b' } }, 'Workbench 入口'),
+        React.createElement('style', null, [
+          '.tkw-workspace { display: grid !important; grid-template-columns: 232px minmax(0, 1fr); }',
+          '.tkw-navigation button { width: 100%; font: inherit; font-size: 13px; min-height: 40px; }',
+          '.tkw-sheet .tkw-content { min-width: 0; }',
+          '@container (max-width: 760px) {',
+          ' .tkw-workspace { grid-template-columns: minmax(0, 1fr); }',
+          ' .tkw-navigation { padding: 14px 12px !important; }',
+          ' .tkw-sheet .tkw-content { padding: 18px 16px !important; }',
+          '}',
+          '@container (max-width: 420px) {',
+          ' .tkw-sheet .tkw-content { padding: 16px 12px !important; }',
+          '}',
+        ].join('')),
+        React.createElement('div', { className: 'tkw-sheet', style: { width: '100%', boxSizing: 'border-box', background: '#fff', border: '1px solid #e4ebe6', borderRadius: 12, overflow: 'hidden' } },
+          React.createElement('div', { className: 'tkw-workspace', style: { display: 'flex', flexWrap: 'wrap', alignItems: 'stretch' } },
+            React.createElement('nav', { 'aria-label': 'Workbench 五个并列入口', className: 'tkw-navigation', style: { flex: '1 1 232px', minWidth: 0, display: 'grid', alignContent: 'start', gap: 3, padding: '20px 12px', background: '#f1f5f2' } },
+              React.createElement('div', { style: { padding: '0 12px 12px', overflowWrap: 'anywhere' } },
+                React.createElement('strong', { style: { display: 'block', fontSize: 14, lineHeight: 1.4 } }, 'Team Knowledge Workbench'),
+                React.createElement('small', { style: { display: 'block', marginTop: 3, color: '#687a70', fontSize: 11 } }, '团队知识复利工作台')),
               ...['我的工作台', '提炼知识&经验', '打磨可复用的技能', '连接业务数据源', '团队业务资产大盘'].map((name, index) =>
                 React.createElement('button', {
                   key: name, type: 'button', disabled: index !== 1, 'aria-current': index === 1 ? 'page' : undefined,
-                  style: { textAlign: 'left', padding: '12px', borderRadius: 8, border: index === 1 ? '1px solid #a5c2ae' : '1px solid #e4ebe6',
-                    background: index === 1 ? '#eaf1eb' : '#f7f9f6', color: index === 1 ? '#245b43' : '#687a70', overflowWrap: 'anywhere' },
-                }, name, React.createElement('small', { style: { display: 'block', marginTop: 4 } },
+                  style: { textAlign: 'left', padding: '10px 12px', borderRadius: 7, border: 0, fontSize: 13,
+                    background: index === 1 ? '#dfe8e1' : 'transparent', color: index === 1 ? '#202d29' : '#52615b',
+                    fontWeight: index === 1 ? 700 : 400, overflowWrap: 'anywhere' },
+                }, name, React.createElement('small', { style: { display: 'block', marginTop: 3, fontWeight: 400, color: '#687a70' } },
                   index === 1 ? '当前固定样本' : '尚未接入 · 当前仅开放固定材料样本')))),
-            React.createElement('div', { style: { flex: '4 1 560px', minWidth: 0 } }, React.createElement(SyntheticStage, null))),
-          React.createElement('details', { style: { marginTop: 18, padding: 12, border: '1px solid #e4ebe6', borderRadius: 8 } },
+            React.createElement('div', { className: 'tkw-content', style: { flex: '4 1 480px', minWidth: 0, padding: 24, boxSizing: 'border-box' } }, React.createElement(SyntheticStage, null))),
+          React.createElement('details', { style: { margin: '0 16px 12px', padding: 12, border: '1px solid #e4ebe6', borderRadius: 8 } },
             React.createElement('summary', null, '技术信息'),
             React.createElement('p', null, panelId + ' · v${packageVersion}'),
             React.createElement('p', null, '本机 API 健康：' + status + '；仅代表连接状态，不代表业务就绪。'),
