@@ -410,6 +410,9 @@ const buildClientEntry = (): string => {
       const [material, setMaterial] = React.useState('report');
       const [reportSection, setReportSection] = React.useState(0);
       const [reportFact, setReportFact] = React.useState(null);
+      const [reportFeedback, setReportFeedback] = React.useState({});
+      const [feedbackKind, setFeedbackKind] = React.useState('');
+      const [feedbackText, setFeedbackText] = React.useState('');
       const [scenario, setScenario] = React.useState('owner');
       const [browsing, setBrowsing] = React.useState(false);
       const [source, setSource] = React.useState('SRC-REQ-01');
@@ -425,6 +428,11 @@ const buildClientEntry = (): string => {
       const muted = { color: '#52615b', fontSize: 13, lineHeight: 1.6 };
       const button = { padding: '9px 12px', borderRadius: 6, border: '1px solid #cbd8d0', background: '#fff', color: '#245b43', whiteSpace: 'normal', overflowWrap: 'anywhere' };
       const unavailable = { ...button, background: '#f7f9f6', color: '#687a70' };
+      const feedbackKinds = [
+        ['correction', '纠正待核理解'], ['locator', '提供证据定位'], ['previous', '旧版理解待核'],
+        ['conflict', '认为可能冲突'], ['unsure', '暂无法判断／非本人负责'],
+      ];
+      const clearFeedbackInput = () => { setFeedbackKind(''); setFeedbackText(''); };
       const openSource = (id) => { if (allowed) { setSource(id); setBrowsing(true); setStep('source'); } };
       const selectMaterial = (next) => {
         setMaterial(next);
@@ -433,43 +441,46 @@ const buildClientEntry = (): string => {
         setSource('SRC-REQ-01');
         setReportSection(0);
         setReportFact(null);
+        setReportFeedback({});
+        clearFeedbackInput();
         setScenario('owner');
         setIntention(false);
       };
       const reportSectionFacts = reportFacts.filter((fact) => fact.anchors.some((anchor) => anchor.section === reportSection));
       const selectedReportFact = reportSectionFacts.find((fact) => fact.id === reportFact);
-      const selectReportSection = (index) => { setReportSection(index); setReportFact(null); };
+      const selectReportSection = (index) => { setReportSection(index); setReportFact(null); clearFeedbackInput(); };
+      const selectReportFact = (id) => { setReportFact(id); clearFeedbackInput(); };
+      const selectStep = (next) => { setStep(next); setReportFact(null); clearFeedbackInput(); };
+      const recordFeedback = () => {
+        if (!selectedReportFact || !feedbackKinds.some(([kind]) => kind === feedbackKind) ||
+          (feedbackKind !== 'unsure' && !feedbackText.trim())) return;
+        setReportFeedback({ ...reportFeedback, [selectedReportFact.id]: { kind: feedbackKind, text: feedbackText.trim() } });
+        clearFeedbackInput();
+      };
       return React.createElement('section', { style: { color: '#202d29', lineHeight: 1.55 } },
         React.createElement('header', { style: { marginBottom: 17 } },
-          React.createElement('p', { style: { ...muted, fontSize: 12, fontWeight: 650, margin: '0 0 5px' } }, 'WORKBENCH / 提炼知识&经验'),
-          React.createElement('h1', { style: { fontSize: 24, lineHeight: 1.35, margin: '0 0 5px', overflowWrap: 'anywhere' } }, '从真实过程里提炼可核对的依据'),
-          React.createElement('p', { style: { color: '#42544a', fontSize: 14, margin: 0 } }, '尊重原始语境，把有权使用的过程材料中的事实、判断和适用边界整理成他人能正确使用的依据；不预设必须新建知识。')),
-        React.createElement('aside', { style: { ...card, background: '#f3f7f3', borderLeft: '3px solid #87ae94', fontSize: 13 } },
-          React.createElement('strong', null, '这里处理来源与待核内容，不是文件上传即入库'),
-          React.createElement('p', { style: { margin: '6px 0 0' } }, '这里仅提供内置虚构示例的本地阅读；未接入真实材料上传、自动提炼，无真实授权，请勿输入真实资料。')),
-        React.createElement('div', { role: 'group', 'aria-label': '虚构验收材料', style: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 } },
-          React.createElement('button', { type: 'button', style: button, 'aria-pressed': material === 'report', onClick: () => selectMaterial('report') }, '原型周报 · 完整虚构示例'),
-          React.createElement('button', { type: 'button', style: button, 'aria-pressed': material === 'orion', onClick: () => selectMaterial('orion') }, 'ORION · 固定锚点测试')),
+          React.createElement('h1', { style: { fontSize: 24, lineHeight: 1.35, margin: 0, overflowWrap: 'anywhere' } }, '提炼知识与经验')),
+        React.createElement('div', { role: 'group', 'aria-label': '示例材料', style: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 } },
+          React.createElement('button', { type: 'button', style: button, 'aria-pressed': material === 'report', onClick: () => selectMaterial('report') }, '采购协同周报 · 虚构样本'),
+          React.createElement('button', { type: 'button', style: button, 'aria-pressed': material === 'orion', onClick: () => selectMaterial('orion') }, 'ORION · 负例样本')),
         material === 'orion' ? React.createElement('div', null,
-        React.createElement('p', { style: { ...muted, margin: '0 0 14px' } }, 'PRJ-ORION-7 / AS-ORION · 评测日 2026-07-15 · 本机模拟，不代表正式创作会话或可用的材料导入'),
+        React.createElement('p', { style: { ...muted, margin: '0 0 10px' } }, 'PRJ-ORION-7 / AS-ORION · 评测日 2026-07-15'),
         React.createElement('div', { role: 'status', style: { ...card, borderColor: '#e7d9ae', background: '#faf1dd' } },
           React.createElement('strong', { style: { color: '#754d16', fontSize: 17 } }, '报价过期 · 不可送审'),
-          React.createElement('p', { style: { margin: '7px 0' } }, 'quote_expired：报价有效至 ' + syntheticSnapshot.review.quoteValidThrough +
-            '；固定评测日为 2026-07-15。11 个段落锚点存在，不代表材料或事实已获核证。'),
-          React.createElement('p', { style: { ...muted, margin: 0 } }, '质量审计结论缺失；R3 适配试验未完成。2026-08-31 是内部采购目标，不是供应商承诺。'))) :
-          React.createElement('p', { style: { ...muted, margin: '0 0 14px' } }, '原型周报 · 页面内置完整虚构文章（非 ORION 项目）；仅供排版和来源阅读验收，未经事实核证，也不是实际文件导入。'),
+          React.createElement('p', { style: { margin: '7px 0' } }, 'quote_expired · 报价有效至 ' + syntheticSnapshot.review.quoteValidThrough),
+          React.createElement('p', { style: { ...muted, margin: 0 } }, '质量审计结论缺失；R3 适配试验未完成。2026-08-31 是内部目标，非供应商承诺。'))) : null,
         React.createElement('nav', { 'aria-label': '材料整理路径', style: { ...card, display: 'flex', flexWrap: 'wrap', gap: 8 } },
           React.createElement('button', { style: { ...button, background: step === 'source' ? '#eaf1eb' : '#fff' },
-            'aria-current': step === 'source' ? 'step' : undefined, onClick: () => setStep('source') }, '导入来源 · 固定样本只读'),
+            'aria-current': step === 'source' ? 'step' : undefined, onClick: () => selectStep('source') }, '来源阅读'),
           React.createElement('button', { style: { ...button, background: step === 'review' ? '#eaf1eb' : '#fff' },
             'aria-current': step === 'review' ? 'step' : undefined,
-            onClick: () => { setStep('review'); if (material === 'report') setReportFact(null); } },
-            material === 'report' ? '事实梳理 · 周报待核索引' : '事实梳理 · 固定锚点核对'),
-          ...['经验总结 · 未接入', '加入知识库 · 未接入', '优化已有 Skill · 未接入'].map((name) =>
+            onClick: () => selectStep('review') },
+            material === 'report' ? '事实梳理' : '锚点核对'),
+          ...['经验总结 · 未开放', '加入知识库 · 未开放', '优化已有 Skill · 未开放'].map((name) =>
             React.createElement('button', { key: name, style: unavailable, disabled: true }, name))),
         step === 'source' && material === 'report' ? React.createElement('section', { style: card },
-          React.createElement('h2', null, '采购协同周报 · 来源全文阅读'),
-          React.createElement('p', { style: muted }, '与可视化原型完全相同的内置虚构周报 · ' + reportLines.length + ' 行；按标题分章仅供阅读，不是自动事实提炼。表格、附录和包装尾注保留原文；附件未读取，eof 之后的尾注不是周报正文。'),
+          React.createElement('h2', null, '采购协同周报 · 来源全文'),
+          React.createElement('p', { style: muted }, '虚构样本 · ' + reportLines.length + ' 行；附件仅列文件名，未读取。'),
           React.createElement('div', { className: 'tkw-source-layout', style: { display: 'grid', gridTemplateColumns: 'minmax(170px, 1fr) minmax(0, 3fr)', gap: 14, minWidth: 0 } },
             React.createElement('nav', { 'aria-label': '材料章节', style: { display: 'grid', alignContent: 'start', gap: 6, maxHeight: 480, overflowY: 'auto', overscrollBehavior: 'contain' } },
               ...reportSections.map((section, index) => React.createElement('button', { key: section.start, type: 'button',
@@ -480,8 +491,8 @@ const buildClientEntry = (): string => {
               key: reportSection, tabIndex: 0, style: { minWidth: 0, maxHeight: 480, overflowY: 'auto', overscrollBehavior: 'contain', padding: '20px 23px', background: '#fbfcfa', border: '1px solid #e4ebe6', borderRadius: 8, overflowWrap: 'anywhere', fontSize: 13, lineHeight: 1.75 } },
               ...reportDocument(reportSections[reportSection].body)))) :
         step === 'review' && material === 'report' ? React.createElement('section', { style: card },
-          React.createElement('h2', null, '事实梳理 · 周报待核索引'),
-          React.createElement('p', { style: muted }, '同一份内置虚构周报的人工编排索引；不是自动提取、来源授权或权威事实核证。只读待核内容，不创建会话、草稿或团队资产。'),
+          React.createElement('h2', { style: { margin: '0 0 6px' } }, '事实梳理 · 待核'),
+          React.createElement('p', { style: { ...muted, margin: '0 0 12px' } }, '人工整理的待核事实；选择条目查看原文及核查缺口。'),
           React.createElement('div', { className: 'tkw-source-layout', style: { display: 'grid', gridTemplateColumns: 'minmax(170px, 1fr) minmax(0, 3fr)', gap: 14, minWidth: 0 } },
             React.createElement('nav', { 'aria-label': '事实梳理 · 材料章节', style: { display: 'grid', alignContent: 'start', gap: 6, maxHeight: 480, overflowY: 'auto', overscrollBehavior: 'contain' } },
               ...reportSections.map((section, index) => React.createElement('button', { key: section.start, type: 'button',
@@ -490,29 +501,42 @@ const buildClientEntry = (): string => {
                 React.createElement('small', { style: { display: 'block', color: '#276b48', fontSize: 11 } },
                   '行 ' + (section.start + 1) + '–' + section.end + ' · ' + reportFacts.filter((fact) => fact.anchors.some((anchor) => anchor.section === index)).length + ' 条关联事实')))),
             React.createElement('div', { style: { minWidth: 0 } },
-              React.createElement('article', { role: 'region', 'aria-label': '本章原文 · ' + reportSections[reportSection].title,
-                key: reportSection, tabIndex: 0, style: { minWidth: 0, maxHeight: 360, overflowY: 'auto', overscrollBehavior: 'contain', padding: '20px 23px', background: '#fbfcfa', border: '1px solid #e4ebe6', borderRadius: 8, overflowWrap: 'anywhere', fontSize: 13, lineHeight: 1.75 } },
-                ...reportDocument(reportSections[reportSection].body)),
-              React.createElement('p', { style: muted }, '行号由锁定的周报原文唯一短句定位；附件未读取，eof 后的包装尾注不参与事实索引。'),
-              React.createElement('h3', null, '本章关联的待核事实'),
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 } },
+                React.createElement('strong', null, reportSections[reportSection].title + ' · ' + reportSectionFacts.length + ' 条关联事实'),
+                React.createElement('button', { type: 'button', style: button, onClick: () => selectStep('source') }, '返回本章来源全文')),
               reportSectionFacts.length ? React.createElement('nav', { 'aria-label': '本章关联的待核事实', style: { display: 'grid', gap: 6 } },
                 ...reportSectionFacts.map((fact) => React.createElement('button', { key: fact.id, type: 'button', 'data-fact-id': fact.id,
                   'aria-pressed': reportFact === fact.id, style: { ...button, textAlign: 'left', background: reportFact === fact.id ? '#eaf1eb' : '#fff' },
-                  onClick: () => setReportFact(fact.id) }, '查看待核事实 · ' + fact.title))) :
-                React.createElement('p', { role: 'status', style: muted }, '本章没有独立待核事实；标题与报告期只作来源背景，不为凑数量造条目。'),
-              selectedReportFact ? React.createElement('section', { 'aria-label': '待核事实详情', style: { ...card, background: '#fbfcfa', marginTop: 14 } },
-                React.createElement('h3', null, selectedReportFact.title + ' · 人工编排待核'),
-                React.createElement('p', null, '时态：' + selectedReportFact.when),
-                React.createElement('strong', null, '本章来源定位（原文短句，非核证）'),
+                  onClick: () => selectReportFact(fact.id) }, '查看待核事实 · ' + fact.title))) :
+                React.createElement('p', { role: 'status', style: muted }, '本章没有待核事实。'),
+              selectedReportFact ? React.createElement('section', { 'aria-label': '待核事实详情', style: { ...card, background: '#fbfcfa', margin: '10px 0 0', padding: '12px 14px' } },
+                React.createElement('h3', { style: { margin: '0 0 8px' } }, selectedReportFact.title + ' · 待核'),
+                React.createElement('p', { style: { margin: '4px 0' } }, '时态：' + selectedReportFact.when),
+                React.createElement('strong', null, '本章原文'),
                 ...selectedReportFact.anchors.filter((anchor) => anchor.section === reportSection).map((anchor) =>
-                  React.createElement('p', { key: anchor.line }, '行 ' + anchor.line + ' · “' + anchor.phrase + '”')),
-                React.createElement('p', null, '来源说法（人工概述）：' + selectedReportFact.claim),
-                React.createElement('p', null, '当前梳理 · 待核：' + selectedReportFact.interpretation),
-                React.createElement('p', null, '仍需核查：' + selectedReportFact.gap),
-                React.createElement('p', { style: muted }, '只读人工索引；未读回原件、附件、权威报表或已有知识版本，不能提交或认作已核事实。')) : null))) :
+                  React.createElement('p', { key: anchor.line, style: { margin: '5px 0', padding: '7px 10px', background: '#edf3ee', overflowWrap: 'anywhere' } }, '行 ' + anchor.line + ' · ' + reportLines[anchor.line - 1])),
+                React.createElement('p', { style: { margin: '6px 0' } }, '来源说法：' + selectedReportFact.claim),
+                React.createElement('p', { style: { margin: '6px 0' } }, '待核理解：' + selectedReportFact.interpretation),
+                React.createElement('p', { style: { margin: '6px 0' } }, '核查缺口：' + selectedReportFact.gap),
+                React.createElement('p', { style: muted }, '以上理解或时态有需要更正的吗？仅填写脱敏说明或证据定位，勿输入真实资料。'),
+                React.createElement('label', { style: { display: 'block', marginBottom: 8 } }, '待核意见类型 ',
+                  React.createElement('select', { 'aria-label': '待核意见类型', value: feedbackKind,
+                    onChange: (event) => setFeedbackKind(event.target.value) },
+                    React.createElement('option', { value: '' }, '请选择'),
+                    ...feedbackKinds.map(([kind, label]) => React.createElement('option', { key: kind, value: kind }, label)))),
+                React.createElement('label', { style: { display: 'block' } }, '待核意见说明（最多 200 字）',
+                  React.createElement('textarea', { 'aria-label': '待核意见说明', value: feedbackText, maxLength: 200, rows: 2,
+                    onChange: (event) => setFeedbackText(event.target.value.slice(0, 200)),
+                    style: { display: 'block', boxSizing: 'border-box', width: '100%', margin: '5px 0 8px' } })),
+                React.createElement('button', { type: 'button', style: button, disabled: !feedbackKind || (feedbackKind !== 'unsure' && !feedbackText.trim()),
+                  onClick: recordFeedback }, '记录本机待核意见'),
+                reportFeedback[selectedReportFact.id] ? React.createElement('section', { 'aria-label': '本机待核意见', role: 'status', style: { marginTop: 10, padding: 10, background: '#faf1dd' } },
+                  React.createElement('strong', null, '本机待核意见 · ' + feedbackKinds.find(([kind]) => kind === reportFeedback[selectedReportFact.id].kind)[1]),
+                  React.createElement('p', { style: { margin: '4px 0' } }, reportFeedback[selectedReportFact.id].text),
+                  React.createElement('small', null, '仅本机暂存，未核实；刷新后消失。')) : null) : null))) :
         step === 'source' ? React.createElement('section', { style: card },
-          React.createElement('h2', null, 'ORION 来源摘录 · 只读'),
-          React.createElement('p', { style: muted }, '固定虚构 Markdown 中四条独立来源记录的 11 个原句锚点，并非四份完整原件；同一文件另有复核评论。未导入文件、未读取附件，也不代表五份基线文件的全文解析。'),
+          React.createElement('h2', null, 'ORION · 来源摘录'),
+          React.createElement('p', { style: muted }, '4 条记录 · 11 个原文锚点；附件未读取。'),
           React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 } },
             React.createElement('button', { style: button, disabled: !allowed, onClick: () => { if (allowed) setBrowsing(true); } }, '浏览来源锚点'),
             React.createElement('button', { style: button, onClick: () => setBrowsing(false) }, '取消浏览')),
@@ -525,17 +549,17 @@ const buildClientEntry = (): string => {
               React.createElement('ul', null, ...syntheticSnapshot.anchors.filter((anchor) => anchor.id.startsWith(source + '#')).map((anchor) =>
                 React.createElement('li', { key: anchor.id, style: { marginBottom: 12 } },
                   React.createElement('strong', null, anchor.id), '：' + anchor.text))))) :
-            React.createElement('p', { style: muted }, allowed ? '按需浏览来源；仅查看不建立草稿。' : '模拟情境已拒绝：来源摘录不可见。')) :
+            React.createElement('p', { style: muted }, allowed ? '仅查看来源，不建立草稿。' : '当前情境不可查看来源。')) :
           React.createElement('section', { style: card },
-            React.createElement('h2', null, '固定锚点核对 · 不是事实提炼'),
-            React.createElement('p', { style: muted }, '仅对已锁定来源的段落定位和报价时效做有限检查；没有权威事实核验、经验稿或已有知识版本对照。'),
+            React.createElement('h2', null, '锚点与报价时效'),
+            React.createElement('p', { style: muted }, '来源锚点可定位；事实与材料完整性仍待核。'),
             React.createElement('p', null, '锚点覆盖 ' + syntheticSnapshot.review.coveredAnchors.length + '/' + syntheticSnapshot.anchors.length +
               ' · quote_expired · 报价有效至 ' + syntheticSnapshot.review.quoteValidThrough + ' · 不可送审'),
             React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 } },
               ...groups.map(([id, title]) => React.createElement('button', { key: id, style: button, disabled: !allowed,
                 onClick: () => openSource(id) }, '查看 ' + title + ' 的来源摘录'))),
-            React.createElement('h3', null, '模拟创作边界 · 仅本机'),
-            React.createElement('p', { style: muted }, '虚构情境切换不是可信身份或资源端 ACL；浏览、取消不会建立 DSH Session。'),
+            React.createElement('h3', null, '测试情境'),
+            React.createElement('p', { style: muted }, '以下权限选择只模拟拒绝结果，不代表实际授权。'),
             React.createElement('label', null, '模拟情境 ', React.createElement('select', {
               'aria-label': '模拟情境', value: scenario, onChange: (event) => {
                 setScenario(event.target.value);
@@ -548,14 +572,13 @@ const buildClientEntry = (): string => {
               React.createElement('option', { value: 'cross_space' }, '跨空间：拒绝'),
               React.createElement('option', { value: 'revoked' }, '已撤权：拒绝'),
               React.createElement('option', { value: 'stale_baseline' }, '旧基线：拒绝'))),
-            React.createElement('p', { style: muted }, allowed ? '只能模拟待补证意向，不能提交候选。' : '模拟请求已拒绝：无草稿副作用；来源摘录已收起。'),
+            React.createElement('p', { style: muted }, allowed ? '可记录本机待补证意向；仍不可提交。' : '当前情境已拒绝；不会创建草稿。'),
             React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
               React.createElement('button', { style: button, disabled: !allowed,
                 onClick: () => { if (allowed) setIntention(true); } }, '模拟建立待补证草稿意向'),
               React.createElement('button', { style: button, disabled: true }, '提交候选（缺证禁用）')),
             intention && allowed ? React.createElement('p', { role: 'status', style: { ...muted, padding: 12, background: '#faf1dd' } },
-              '本地待补证草稿意向：1 · pending_checks · quote_expired · 非真实会话/草稿') : null,
-            React.createElement('p', { style: muted }, '本区域不会调用 DSH Session；独立草稿修订实验不属于此样本。'))
+              '本机待补证草稿意向：1 · pending_checks · quote_expired · 尚未创建正式草稿') : null)
       );
     }
 
@@ -615,16 +638,16 @@ ${draftReviewClient}
           '}',
           '@container (max-width: 760px) {',
           ' .tkw-workspace { grid-template-columns: minmax(0, 1fr); }',
-          ' .tkw-navigation { padding: 14px 12px !important; }',
+          ' .tkw-navigation { position: static !important; max-height: none !important; overflow-y: visible !important; padding: 14px 12px !important; border-radius: 12px 12px 0 0 !important; }',
           ' .tkw-sheet .tkw-content { padding: 18px 16px !important; }',
           '}',
           '@container (max-width: 420px) {',
           ' .tkw-sheet .tkw-content { padding: 16px 12px !important; }',
           '}',
         ].join('')),
-        React.createElement('div', { className: 'tkw-sheet', style: { width: '100%', boxSizing: 'border-box', background: '#fff', border: '1px solid #e4ebe6', borderRadius: 12, overflow: 'hidden' } },
+        React.createElement('div', { className: 'tkw-sheet', style: { width: '100%', boxSizing: 'border-box', background: '#fff', border: '1px solid #e4ebe6', borderRadius: 12 } },
           React.createElement('div', { className: 'tkw-workspace', style: { display: 'flex', flexWrap: 'wrap', alignItems: 'stretch' } },
-            React.createElement('nav', { 'aria-label': 'Workbench 五个并列入口', className: 'tkw-navigation', style: { flex: '1 1 232px', minWidth: 0, display: 'grid', alignContent: 'start', gap: 3, padding: '20px 12px', background: '#f1f5f2' } },
+            React.createElement('nav', { 'aria-label': 'Workbench 五个并列入口', className: 'tkw-navigation', style: { flex: '1 1 232px', minWidth: 0, display: 'grid', alignContent: 'start', gap: 3, padding: '20px 12px', background: '#f1f5f2', position: 'sticky', alignSelf: 'start', top: 'var(--dsh-frame-top-clearance, 48px)', maxHeight: 'calc(100dvh - var(--dsh-frame-top-clearance, 48px) - 24px)', overflowY: 'auto', boxSizing: 'border-box', borderRadius: '12px 0 0 0' } },
               React.createElement('div', { style: { padding: '0 12px 12px', overflowWrap: 'anywhere' } },
                 React.createElement('strong', { style: { display: 'block', fontSize: 14, lineHeight: 1.4 } }, 'Team Knowledge Workbench'),
                 React.createElement('small', { style: { display: 'block', marginTop: 3, color: '#687a70', fontSize: 11 } }, '团队知识复利工作台')),
@@ -635,7 +658,7 @@ ${draftReviewClient}
                     background: index === 1 ? '#dfe8e1' : 'transparent', color: index === 1 ? '#202d29' : '#52615b',
                     fontWeight: index === 1 ? 700 : 400, overflowWrap: 'anywhere' },
                 }, name, React.createElement('small', { style: { display: 'block', marginTop: 3, fontWeight: 400, color: '#687a70' } },
-                  index === 1 ? '当前固定样本' : '尚未接入 · 当前仅开放固定材料样本')))),
+                  index === 1 ? '当前入口' : '未开放')))),
             React.createElement('div', { className: 'tkw-content', style: { flex: '4 1 480px', minWidth: 0, padding: 24, boxSizing: 'border-box' } }, React.createElement(SyntheticStage, null))),
           React.createElement('details', { style: { margin: '0 16px 12px', padding: 12, border: '1px solid #e4ebe6', borderRadius: 8 } },
             React.createElement('summary', null, '技术信息'),
