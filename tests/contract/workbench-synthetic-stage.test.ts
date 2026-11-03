@@ -114,6 +114,8 @@ describe('installed Client synthetic material stage', () => {
     expect(localStyle?.children[0]).toContain('@container (max-width: 760px)');
     expect(localStyle?.children[0]).toContain('grid-template-columns: minmax(0, 1fr)');
     expect(localStyle?.children[0]).toContain('.tkw-navigation { position: static !important;');
+    expect(localStyle?.children[0]).toContain('.tkw-step-navigation { grid-template-columns: repeat(2, minmax(0, 1fr)) !important;');
+    expect(localStyle?.children[0]).toContain('.tkw-step-navigation button:last-child { grid-column: 1 / -1; }');
     expect(sheet?.props.className).toBe('tkw-sheet');
     expect(sheet?.props.style).not.toHaveProperty('overflow', 'hidden');
     expect(sheet?.props.style).not.toHaveProperty('maxWidth');
@@ -129,7 +131,11 @@ describe('installed Client synthetic material stage', () => {
     stage.click('事实梳理');
     expect(JSON.stringify(stage.render())).toContain('本章没有待核事实');
     stage.click('来源阅读');
-    expect(stage.find('nav', '材料整理路径').children).toHaveLength(5);
+    const steps = stage.find('nav', '材料整理路径');
+    expect(steps.children).toHaveLength(5);
+    expect(steps.props.className).toBe('tkw-step-navigation');
+    expect(steps.props.style).toMatchObject({ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' });
+    expect(steps.children).toMatchObject(Array.from({ length: 5 }, () => ({ props: { style: { minWidth: 0 } } })));
     const reportNav = stage.find('nav', '材料章节');
     expect(reportNav.children.map((entry) => (entry as Element).children[0])).toEqual([
       '来源信息与标题', '一、部门本周核心 KPI 概览', '二、本周重点采购工作进展',
@@ -183,7 +189,8 @@ describe('installed Client synthetic material stage', () => {
       expect(entry.props.onClick).toBeUndefined();
     }
     expect(JSON.stringify(stage.renderPanel())).not.toContain('Workbench 入口状态');
-    expect(initial).toContain('提炼知识与经验');
+    expect(initial).toContain('从真实过程里提炼可核对的依据');
+    expect(initial).toContain('尊重原始语境，把有权使用的过程材料中的事实、判断和适用边界整理成他人能正确使用的依据；不预设必须新建知识。');
     expect(initial).toContain('采购协同周报 · 虚构样本');
     expect(initial).not.toContain('这里处理来源与待核内容');
     expect(initial).not.toContain('仅供排版和来源阅读验收');
@@ -236,7 +243,7 @@ describe('installed Client synthetic material stage', () => {
     expect(initial).toContain('负例样本');
     expect(initial).toContain('质量审计结论缺失');
     expect(initial).toContain('R3 适配试验未完成');
-    expect(initial).toContain('提炼知识与经验');
+    expect(initial).toContain('从真实过程里提炼可核对的依据');
     expect(JSON.stringify(stage.renderPanel())).toContain('external_provider_unavailable');
     expect(initial).not.toContain('SRC-REQ-01#P3`：');
     stage.click('浏览来源锚点');
