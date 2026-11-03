@@ -514,8 +514,9 @@ const buildClientEntry = (): string => {
                 React.createElement('h3', { style: { margin: '0 0 8px' } }, selectedReportFact.title + ' · 待核'),
                 React.createElement('p', { style: { margin: '4px 0' } }, '时态：' + selectedReportFact.when),
                 React.createElement('strong', null, '本章原文'),
-                ...selectedReportFact.anchors.filter((anchor) => anchor.section === reportSection).map((anchor) =>
-                  React.createElement('p', { key: anchor.line, style: { margin: '5px 0', padding: '7px 10px', background: '#edf3ee', overflowWrap: 'anywhere' } }, '行 ' + anchor.line + ' · ' + reportLines[anchor.line - 1])),
+                React.createElement('div', { role: 'group', 'aria-label': '本章原文片段', style: { margin: '5px 0', background: '#edf3ee', borderRadius: 6, overflowWrap: 'anywhere' } },
+                  ...selectedReportFact.anchors.filter((anchor) => anchor.section === reportSection).map((anchor) =>
+                    React.createElement('div', { key: anchor.line, style: { padding: '5px 10px' } }, '行 ' + anchor.line + ' · ', reportLines[anchor.line - 1]))),
                 React.createElement('p', { style: { margin: '6px 0' } }, '来源说法：' + selectedReportFact.claim),
                 React.createElement('p', { style: { margin: '6px 0' } }, '待核理解：' + selectedReportFact.interpretation),
                 React.createElement('p', { style: { margin: '6px 0' } }, '核查缺口：' + selectedReportFact.gap),

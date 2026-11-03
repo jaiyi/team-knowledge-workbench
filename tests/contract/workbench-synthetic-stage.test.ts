@@ -313,7 +313,11 @@ describe('installed Client synthetic material stage', () => {
     expect(JSON.stringify(stage.render())).toContain('本章没有待核事实');
     stage.click('一、部门本周核心 KPI 概览');
     stage.click('查看待核事实 · 五项 KPI 仅为报告期快照');
-    expect(JSON.stringify(stage.find('section', '待核事实详情'))).toContain('行 13');
+    const kpiSource = stage.find('div', '本章原文片段');
+    expect(kpiSource.children).toHaveLength(5);
+    expect(kpiSource.children.map((row) => (row as Element).children[0])).toEqual(['行 13 · ', '行 14 · ', '行 15 · ', '行 16 · ', '行 17 · ']);
+    expect(kpiSource.children).toMatchObject(Array.from({ length: 5 }, () => ({ tag: 'div', props: { style: { padding: '5px 10px' } } })));
+    expect(JSON.stringify(kpiSource)).toContain('93.7%');
     expect(JSON.stringify(stage.find('section', '待核事实详情'))).toContain('有权报表');
     stage.click('二、本周重点采购工作进展');
     expect(stage.find('nav', '本章关联的待核事实').children).toHaveLength(5);
