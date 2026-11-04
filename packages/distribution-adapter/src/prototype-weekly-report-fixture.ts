@@ -17,7 +17,7 @@ export function buildPrototypeWeeklyReport(read = () =>
 
 const factPoints = [
   {
-    id: 'shared-kpi', title: '五项 KPI 仅为报告期快照',
+    id: 'shared-kpi', title: '五项 KPI 仅为报告期快照', roles: ['Data'],
     claim: '周报列出五项当期指标及原因；数值均为虚构示例。',
     interpretation: '指标仅反映报告期说法，不构成长期结论。',
     when: '本报告期；后续变化未核', gap: '逐项核统计时点、口径与有权报表。',
@@ -27,7 +27,7 @@ const factPoints = [
     ],
   },
   {
-    id: 'a-test', title: '备选料试验、订单与预计交货',
+    id: 'a-test', title: '备选料试验、订单与预计交货', roles: ['Data'],
     claim: '周报将小试、试制订单与预计交货分开叙述。',
     interpretation: '下单不证明实际交付或替代获批。',
     when: '试验与订单为本期自述；交货是下周期预期', gap: '核试验记录、采购订单和实际到货签收。',
@@ -55,7 +55,7 @@ const factPoints = [
     anchors: [[2, '服务续签会议已交换条款草案']],
   },
   {
-    id: 'shared-srm', title: 'SRM 测试演示与培训不等于已上线',
+    id: 'shared-srm', title: 'SRM 测试演示与培训不等于已上线', roles: ['Data'],
     claim: '周报记受控测试环境演示和培训，并计划后续上线。',
     interpretation: '演示及培训不证明正式上线或效率收益达成。',
     when: '演示为本期自述；上线和效果仅为计划／预测', gap: '核验收回执、培训结果、正式上线读回。',
@@ -98,7 +98,7 @@ export function buildPrototypeWeeklyReportFacts(content = buildPrototypeWeeklyRe
   const endOfBody = lines.findIndex((line) => line === '**附录／报表调阅（仅文件名示意，未读取附件）**');
   if (endOfBody < 0) throw new Error('prototype weekly report fact body boundary missing');
   return factPoints.map((point) => ({
-    id: point.id, title: point.title, claim: point.claim, interpretation: point.interpretation,
+    id: point.id, title: point.title, roles: 'roles' in point ? point.roles : [], claim: point.claim, interpretation: point.interpretation,
     when: point.when, gap: point.gap,
     anchors: point.anchors.map(([section, phrase]) => {
       const matches = lines.flatMap((line, index) => line.includes(phrase) ? [index] : []);
