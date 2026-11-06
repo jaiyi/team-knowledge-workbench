@@ -41,8 +41,8 @@ async function start(database: Pool, config = configuration()) {
   return { server, url: `http://127.0.0.1:${address.port}` };
 }
 
-const publicRequest = (url: string) => new Promise<{ status: number; body: string; location: string | undefined }>((resolve, reject) => {
-  get(url, { headers: { host: 'workbench.example.test' } }, (response) => {
+const publicRequest = (url: string, headers: Record<string, string> = {}) => new Promise<{ status: number; body: string; location: string | undefined }>((resolve, reject) => {
+  get(url, { headers: { host: 'workbench.example.test', ...headers } }, (response) => {
     const chunks: Buffer[] = [];
     response.on('data', (chunk: Buffer) => chunks.push(chunk));
     response.on('end', () => resolve({ status: response.statusCode ?? 0,
@@ -84,6 +84,22 @@ describe('explicit Web OIDC server configuration', () => {
     expect(login.status).toBe(302);
     expect(login.location).toContain('https://id.example.test/issuer/authorize');
     expect((await fetch(`${url}/v1/context`)).status).toBe(404);
+  });
+
+  it('rejects wrong public Host and any forwarded-header names before creating login state', async () => {
+    const database = await fixture();
+    const { url } = await start(database);
+    for (const path of ['/auth', '/auth/login']) {
+      expect((await publicRequest(`${url}${path}`, { host: 'foreign.example.test' })).status).toBe(401);
+      for (const name of ['forwarded', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-for',
+        'x-forwarded-port', 'x-forwarded-prefix']) {
+        for (const value of ['https', '']) {
+          expect((await publicRequest(`${url}${path}`, { [name]: value })).status).toBe(401);
+        }
+      }
+    }
+    expect((await database.query('SELECT COUNT(*)::integer AS count FROM web_oidc_attempts')).rows[0])
+      .toEqual({ count: 0 });
   });
 
   it('rejects incomplete schema and mismatched issuer before listening', async () => {

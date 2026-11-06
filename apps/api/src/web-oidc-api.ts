@@ -129,8 +129,10 @@ export function createWebOidcApi(settings: Settings) {
     const path = (request.url ?? '').split('?')[0] ?? '';
     if (!['/auth/login', '/auth/callback', '/auth/session', '/auth/logout', '/auth', '/auth/spaces'].includes(path)) return false;
     try {
-      if (request.headers.host !== trustedOrigin.host || request.headers.forwarded || request.headers['x-forwarded-host']
-        || request.headers['x-forwarded-proto'] || request.headers['x-forwarded-for']) { denied(response); return true; }
+      if (request.headers.host !== trustedOrigin.host
+        || Object.keys(request.headers).some((name) => name === 'forwarded' || name.startsWith('x-forwarded-'))) {
+        denied(response); return true;
+      }
       const oidcNavigation = path === '/auth/callback' && request.method === 'GET'
         && request.headers['sec-fetch-mode'] === 'navigate' && request.headers['sec-fetch-dest'] === 'document';
       if (request.headers['sec-fetch-site'] && !['same-origin', 'none'].includes(request.headers['sec-fetch-site'])
