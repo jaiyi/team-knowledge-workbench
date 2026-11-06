@@ -42,7 +42,7 @@ export async function provisionWebIdentity(database: Pick<Pool, 'connect'>, requ
     if (existing?.status === 'disabled') throw new Error('Disabled identity cannot be provisioned');
     const spaces = await connection.query<{ team_id: string; asset_space_id: string }>(
       `SELECT team_id, asset_space_id FROM asset_spaces WHERE (team_id, asset_space_id) IN
-       (SELECT * FROM UNNEST($1::text[], $2::text[])) FOR SHARE`,
+       (SELECT * FROM UNNEST($1::text[], $2::text[]))`,
       [request.grants.map((grant) => grant.teamId), request.grants.map((grant) => grant.assetSpaceId)]);
     if (spaces.rows.length !== new Set(request.grants.map((grant) => `${grant.teamId}\0${grant.assetSpaceId}`)).size) {
       throw new Error('Unapproved asset space');
@@ -50,7 +50,7 @@ export async function provisionWebIdentity(database: Pick<Pool, 'connect'>, requ
     const memberships = await connection.query<{ team_id: string; status: string }>(
       'SELECT team_id, status FROM team_memberships WHERE actor_id = $1 FOR UPDATE', [principalId]);
     const roles = await connection.query<{ team_id: string; asset_space_id: string; role: Grant['role'] }>(
-      'SELECT team_id, asset_space_id, role FROM knowledge_role_bindings WHERE actor_id = $1 FOR UPDATE', [principalId]);
+      'SELECT team_id, asset_space_id, role FROM knowledge_role_bindings WHERE actor_id = $1', [principalId]);
     const teams = [...new Set(request.grants.map((grant) => grant.teamId))];
     const grantKeys = request.grants.map((grant) => `${grant.teamId}\0${grant.assetSpaceId}\0${grant.role}`);
     if (memberships.rows.some((row) => !teams.includes(row.team_id) || row.status !== 'active')

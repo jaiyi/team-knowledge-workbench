@@ -57,6 +57,64 @@ describe('administrator-approved Web identity binding', () => {
       .toEqual([{ actor_id: 'principal-a', team_id: 'team-a', status: 'active' }]);
   });
 
+  it('provisions and disables with no permission to modify spaces or existing roles', async () => {
+    const { db, database } = await fixture();
+    await db.query("INSERT INTO team_memberships VALUES ('principal-b', 'team-b', 'active')");
+    await db.query("INSERT INTO knowledge_role_bindings VALUES ('principal-b', 'team-b', 'space-b', 'reviewer')");
+    await db.exec(`CREATE FUNCTION reject_principal_c_role() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.actor_id = 'principal-c' THEN RAISE EXCEPTION 'rejected role'; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER reject_principal_c_role BEFORE INSERT ON knowledge_role_bindings
+        FOR EACH ROW EXECUTE FUNCTION reject_principal_c_role()`);
+    await db.exec(`CREATE ROLE scoped_admin;
+      GRANT USAGE ON SCHEMA public TO scoped_admin;
+      GRANT SELECT (issuer, subject, principal_id, status) ON workbench_identity_bindings TO scoped_admin;
+      GRANT SELECT (team_id, asset_space_id) ON asset_spaces TO scoped_admin;
+      GRANT SELECT (actor_id, team_id, status) ON team_memberships TO scoped_admin;
+      GRANT SELECT (actor_id, team_id, asset_space_id, role) ON knowledge_role_bindings TO scoped_admin;
+      GRANT INSERT (issuer, subject, principal_id) ON workbench_identity_bindings TO scoped_admin;
+      GRANT INSERT (actor_id, team_id, status) ON team_memberships TO scoped_admin;
+      GRANT INSERT (actor_id, team_id, asset_space_id, role) ON knowledge_role_bindings TO scoped_admin;
+      GRANT UPDATE (status) ON workbench_identity_bindings, team_memberships TO scoped_admin;
+      SET ROLE scoped_admin`);
+    try {
+      expect(await provisionWebIdentity(database, a)).toEqual({ action: 'provision', outcome: 'would_apply' });
+      expect(await provisionWebIdentity(database, a, true)).toEqual({ action: 'provision', outcome: 'applied' });
+      expect(await provisionWebIdentity(database, b)).toEqual({ action: 'provision', outcome: 'would_apply' });
+      expect(await provisionWebIdentity(database, b, true)).toEqual({ action: 'provision', outcome: 'applied' });
+      expect(await provisionWebIdentity(database, a, true)).toEqual({ action: 'provision', outcome: 'unchanged' });
+      await expect(provisionWebIdentity(database, { ...a, grants: b.grants }, true)).rejects.toThrow();
+      await expect(provisionWebIdentity(database, { ...a, subject: 'opaque-id-c', principalId: 'principal-c' }, true))
+        .rejects.toThrow('rejected role');
+      for (const sql of [
+        "UPDATE asset_spaces SET team_id = 'team-b' WHERE asset_space_id = 'space-a'",
+        "UPDATE knowledge_role_bindings SET role = 'owner' WHERE actor_id = 'principal-a'",
+        "DELETE FROM knowledge_role_bindings WHERE actor_id = 'principal-a'",
+        "UPDATE workbench_identity_bindings SET principal_id = 'other' WHERE subject = 'opaque-id-a'",
+        "UPDATE team_memberships SET team_id = 'team-b' WHERE actor_id = 'principal-a'",
+      ]) await expect(db.query(sql)).rejects.toThrow('permission denied');
+      const disable = { action: 'disable' as const, issuer: a.issuer, subject: a.subject, principalId: a.principalId };
+      expect(await provisionWebIdentity(database, disable, true)).toEqual({ action: 'disable', outcome: 'applied' });
+      expect(await provisionWebIdentity(database, disable, true)).toEqual({ action: 'disable', outcome: 'unchanged' });
+    } finally {
+      await db.exec('RESET ROLE');
+    }
+    expect((await db.query("SELECT * FROM workbench_identity_bindings WHERE principal_id = 'principal-c'")).rows).toEqual([]);
+    expect((await db.query("SELECT * FROM team_memberships WHERE actor_id = 'principal-c'")).rows).toEqual([]);
+    expect((await db.query("SELECT * FROM knowledge_role_bindings WHERE actor_id = 'principal-c'")).rows).toEqual([]);
+    expect((await state(db)).identities).toMatchObject([
+      { subject: 'opaque-id-a', status: 'disabled', revocation_epoch: 1 },
+      { subject: 'opaque-id-b', status: 'active', revocation_epoch: 0 },
+    ]);
+    expect((await state(db)).memberships).toEqual([
+      { actor_id: 'principal-a', team_id: 'team-a', status: 'disabled' },
+      { actor_id: 'principal-b', team_id: 'team-b', status: 'active' },
+    ]);
+    expect((await state(db)).roles).toEqual([
+      { actor_id: 'principal-a', team_id: 'team-a', asset_space_id: 'space-a', role: 'reviewer' },
+      { actor_id: 'principal-b', team_id: 'team-b', asset_space_id: 'space-b', role: 'reviewer' },
+    ]);
+  });
+
   it('binds a previously authorized principal without duplicating approved grants', async () => {
     const { db, database } = await fixture();
     await db.query("INSERT INTO team_memberships VALUES ('principal-a', 'team-a', 'active')");
