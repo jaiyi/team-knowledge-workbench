@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
-import { readSourceCommit, parseBackendEndpoint } from '../../scripts/build-workbench-package.js';
+import { readSourceCommit, parseBackendEndpoint, parsePackageOptions } from '../../scripts/build-workbench-package.js';
 
 const execFile = promisify(executeFile);
 const directories: string[] = [];
@@ -68,5 +68,20 @@ describe('Workbench artifact source provenance', () => {
     expect(() => parseBackendEndpoint(['--backend-endpoint'])).toThrow();
     expect(() => parseBackendEndpoint(['--backend-endpoint', 'http://127.0.0.1:3030', '--backend-endpoint', 'http://127.0.0.1:4040'])).toThrow();
     expect(() => parseBackendEndpoint(['http://127.0.0.1:3030'])).toThrow();
+  });
+
+  it('passes an optional Web login URL separately from the backend endpoint', () => {
+    const auth = 'https://login.example.org/auth';
+    const backend = 'http://127.0.0.1:3030';
+    expect(parsePackageOptions([])).toEqual({});
+    expect(parsePackageOptions(['--web-login-url', auth])).toEqual({ webLoginUrl: auth });
+    expect(parsePackageOptions(['--backend-endpoint', backend, '--web-login-url', auth]))
+      .toEqual({ backendEndpoint: backend, webLoginUrl: auth });
+    expect(parsePackageOptions(['--web-login-url', auth, '--backend-endpoint', backend]))
+      .toEqual({ webLoginUrl: auth, backendEndpoint: backend });
+    for (const args of [
+      ['--web-login-url'], ['--web-login-url', ''], ['--web-login-url', auth, '--web-login-url', auth],
+      ['--backend-endpoint', backend, '--backend-endpoint', backend], ['--other', auth],
+    ]) expect(() => parsePackageOptions(args)).toThrow('Usage: package:workbench');
   });
 });

@@ -316,7 +316,7 @@ const draftReviewClient = `    function completedRevision(snapshot, requestId) {
     }
 `;
 
-const buildClientEntry = (): string => {
+const buildClientEntry = (webLoginUrl?: string): string => {
   const syntheticSnapshot = JSON.stringify(buildSyntheticStageSnapshot());
   const prototype = buildPrototypeWeeklyReport();
   const prototypeReport = JSON.stringify(prototype.content);
@@ -328,6 +328,7 @@ const buildClientEntry = (): string => {
     const React = require('react');
     const panelId = '${packageIdentity}';
     const healthPath = 'api/team-knowledge-workbench.health';
+    const webLoginUrl = ${JSON.stringify(webLoginUrl ?? null)};
     const syntheticSnapshot = ${syntheticSnapshot};
     const prototypeReport = ${prototypeReport};
     const reportFacts = ${reportFacts};
@@ -801,6 +802,12 @@ ${draftReviewClient}
                 }, name, React.createElement('small', { style: { display: 'block', marginTop: 3, fontWeight: 400, color: '#687a70' } },
                   index === 1 ? '当前入口' : '未开放')))),
             React.createElement('div', { className: 'tkw-content', style: { flex: '4 1 480px', minWidth: 0, padding: 24, boxSizing: 'border-box' } }, React.createElement(SyntheticStage, null))),
+          webLoginUrl ? React.createElement('button', {
+            type: 'button',
+            'aria-label': '在浏览器打开 Workbench 登录',
+            style: { margin: '12px 16px', padding: '9px 12px', borderRadius: 6, border: '1px solid #cbd8d0', background: '#fff', color: '#245b43' },
+            onClick: () => window.open(webLoginUrl, '_blank', 'noopener,noreferrer'),
+          }, '在浏览器打开 Workbench 登录') : null,
           React.createElement('details', { style: { margin: '0 16px 12px', padding: 12, border: '1px solid #e4ebe6', borderRadius: 8 } },
             React.createElement('summary', null, '技术信息'),
             React.createElement('p', null, panelId + ' · v${packageVersion}'),
@@ -851,6 +858,7 @@ const buildCordisRegistration = (sourceCommit: string, backendEndpoint?: string)
 export type WorkbenchPackageFixtureInput = Readonly<{
   sourceCommit: string;
   backendEndpoint?: string;
+  webLoginUrl?: string;
 }>;
 
 export const buildWorkbenchPackageInput = (
@@ -875,6 +883,19 @@ export const buildWorkbenchPackageInput = (
       throw new Error('backend endpoint must be a canonical loopback HTTP origin');
     }
   }
+  if (input.webLoginUrl !== undefined) {
+    let url: URL;
+    try {
+      url = new URL(input.webLoginUrl);
+    } catch {
+      throw new Error('Web login URL must be a canonical HTTPS /auth URL');
+    }
+    if (url.protocol !== 'https:' || !url.hostname || url.username || url.password
+      || url.pathname !== '/auth' || url.search || url.hash
+      || input.webLoginUrl !== `${url.origin}/auth`) {
+      throw new Error('Web login URL must be a canonical HTTPS /auth URL');
+    }
+  }
 
   return {
   packageIdentity,
@@ -886,7 +907,7 @@ export const buildWorkbenchPackageInput = (
     { path: 'package.json', content: packageManifest },
     { path: 'index.js', content: buildServerEntry(input.sourceCommit) },
     { path: 'workbench-host.js', content: hostEntry },
-    { path: 'client/index.js', content: buildClientEntry() },
+    { path: 'client/index.js', content: buildClientEntry(input.webLoginUrl) },
     { path: 'cordis.patch.yml', content: buildCordisRegistration(input.sourceCommit, input.backendEndpoint) },
   ],
   };

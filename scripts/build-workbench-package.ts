@@ -30,12 +30,25 @@ export const parseBackendEndpoint = (args: readonly string[]): string | undefine
   return args[1];
 };
 
+export const parsePackageOptions = (args: readonly string[]): { backendEndpoint?: string; webLoginUrl?: string } => {
+  const options: { backendEndpoint?: string; webLoginUrl?: string } = {};
+  for (let index = 0; index < args.length; index += 2) {
+    const flag = args[index];
+    const value = args[index + 1];
+    const key = flag === '--backend-endpoint' ? 'backendEndpoint' : flag === '--web-login-url' ? 'webLoginUrl' : null;
+    if (!key || !value || options[key] !== undefined) {
+      throw new Error('Usage: package:workbench [--backend-endpoint http://127.0.0.1:<port>] [--web-login-url https://<host>/auth]');
+    }
+    options[key] = value;
+  }
+  return options;
+};
+
 const main = async (): Promise<void> => {
   const sourceCommit = await readSourceCommit(fileURLToPath(new URL('..', import.meta.url)));
-  const backendEndpoint = parseBackendEndpoint(process.argv.slice(2));
   const input = buildWorkbenchPackageInput({
     sourceCommit,
-    ...(backendEndpoint === undefined ? {} : { backendEndpoint }),
+    ...parsePackageOptions(process.argv.slice(2)),
   });
   const outputDirectory = await mkdtemp(`${tmpdir()}/team-knowledge-workbench-`);
   const artifact = await writeLocalPackageArtifact(input, outputDirectory);

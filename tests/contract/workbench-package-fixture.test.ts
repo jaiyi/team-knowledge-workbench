@@ -111,6 +111,36 @@ describe('Workbench package fixture', () => {
     }
   });
 
+  it('embeds a fixed HTTPS /auth URL independently of the local API endpoint', () => {
+    const sourceCommit = '0123456789abcdef0123456789abcdef01234567';
+    const webLoginUrl = 'https://login.example.org/auth';
+    const input = buildWorkbenchPackageInput({ sourceCommit, webLoginUrl });
+    const client = input.files.find((file) => file.path === 'client/index.js')?.content ?? '';
+    const patch = input.files.find((file) => file.path === 'cordis.patch.yml')?.content ?? '';
+    expect(client).toContain(webLoginUrl);
+    expect(patch).not.toContain(webLoginUrl);
+    expect(patch).not.toContain('backendEndpoint');
+    const withBackend = buildWorkbenchPackageInput({ sourceCommit, backendEndpoint: 'http://127.0.0.1:3030', webLoginUrl });
+    expect(withBackend.files.find((file) => file.path === 'cordis.patch.yml')?.content).toContain("backendEndpoint: 'http://127.0.0.1:3030'");
+    expect(withBackend.files.find((file) => file.path === 'client/index.js')?.content).toContain(webLoginUrl);
+    expect(input.files.find((file) => file.path === 'workbench-host.js')?.content).not.toContain(webLoginUrl);
+  });
+
+  it('refuses noncanonical, non-HTTPS, or credential-bearing Workbench Web login URLs', () => {
+    const sourceCommit = '0123456789abcdef0123456789abcdef01234567';
+    for (const webLoginUrl of [
+      '', 'http://login.example.org/auth', 'https://login.example.org/', 'https://login.example.org/auth/',
+      'https://login.example.org/auth/other', 'https://login.example.org/%61uth',
+      'https://login.example.org/auth?token=secret', 'https://login.example.org/auth#token',
+      'https://user@login.example.org/auth', 'https://user:pass@login.example.org/auth',
+      'https://LOGIN.example.org/auth', 'https://login.example.org:443/auth',
+      'https://login.example.org\\@attacker.example/auth', 'https://login.example.org/auth\n',
+    ]) {
+      expect(() => buildWorkbenchPackageInput({ sourceCommit, webLoginUrl })).toThrow('Web login URL must be a canonical HTTPS /auth URL');
+    }
+    expect(() => buildWorkbenchPackageInput({ sourceCommit, webLoginUrl: 42 as unknown as string })).toThrow('Web login URL must be a canonical HTTPS /auth URL');
+  });
+
   it('probes the configured local API and degrades on disconnect before recovering', async () => {
     const server = createApiServer();
     const backendEndpoint = await listen(server);
@@ -343,6 +373,58 @@ describe('Workbench package fixture', () => {
     expect(elements.some((element) => element.children.includes('team-knowledge-workbench · v0.1.0'))).toBe(true);
     expect(elements.some((element) => element.children.some((child) => typeof child === 'string' && child.includes('本机 API 健康：未验证')))).toBe(true);
     expect(client).not.toContain('desktopWorkbenches.register');
+  });
+
+  it('shows the browser login button only when configured and opens without sending a request', () => {
+    const sourceCommit = '0123456789abcdef0123456789abcdef01234567';
+    const webLoginUrl = 'https://login.example.org/auth';
+    const render = (configured: boolean) => {
+      const client = buildWorkbenchPackageInput({ sourceCommit, ...(configured ? { webLoginUrl } : {}) })
+        .files.find((file) => file.path === 'client/index.js')?.content ?? '';
+      let panel: (() => DraftElement) | undefined;
+      let clientModule: { apply?: (ctx: unknown) => void } = {};
+      const open = vi.fn();
+      const fetch = vi.fn();
+      runInNewContext(client, {
+        window: { open, __ModuleLoader__: { load: ({ factory }: { factory: (require: () => unknown) => typeof clientModule }) => {
+          clientModule = factory(() => ({
+            createElement: (tag: DraftElement['tag'], props: Record<string, unknown> | null, ...children: DraftElement['children']) =>
+              ({ tag, props: props ?? {}, children }),
+            useState: (initial: unknown) => [initial, () => {}],
+            useEffect: () => {},
+          }));
+        } } },
+        fetch,
+      });
+      clientModule.apply?.({ slots: {
+        inject: (_name: string, register: () => void) => register(),
+        register: (options: { name: string }, component: () => DraftElement) => {
+          if (options.name === 'main') panel = component;
+          return () => {};
+        },
+      } });
+      if (!panel) throw new Error('missing panel');
+      const buttons: DraftElement[] = [];
+      const visit = (node: DraftElement | string | null) => {
+        if (node === null || typeof node === 'string') return;
+        if (node.tag === 'button') buttons.push(node);
+        for (const child of node.children) visit(child);
+      };
+      visit(panel());
+      return { client, open, fetch, buttons };
+    };
+    const absent = render(false);
+    expect(absent.buttons.some((button) => button.children.includes('在浏览器打开 Workbench 登录'))).toBe(false);
+    expect(absent.client).not.toContain(webLoginUrl);
+    const configured = render(true);
+    const link = configured.buttons.find((button) => button.children.includes('在浏览器打开 Workbench 登录'));
+    expect(link).toBeDefined();
+    expect(link?.props.type).toBe('button');
+    expect(link?.props['aria-label']).toBe('在浏览器打开 Workbench 登录');
+    expect(configured.fetch).not.toHaveBeenCalled();
+    (link?.props.onClick as () => void)();
+    expect(configured.open).toHaveBeenCalledExactlyOnceWith(webLoginUrl, '_blank', 'noopener,noreferrer');
+    expect(configured.fetch).not.toHaveBeenCalled();
   });
 
   it('shows only fixed API reachability labels and retries without overlapping requests', async () => {
