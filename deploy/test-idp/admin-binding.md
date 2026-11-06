@@ -2,7 +2,7 @@
 
 只针对**获得单独授权的非生产数据库/schema**。本票不执行目标环境迁移、写入或部署。本工具没有 HTTP 开通接口，也不会从登录回调或邮箱/DSH userId 自助造人。管理员先在隔离 IdP 核对签发方 `issuer` 与不可更改的测试 `sub`，私下审批唯一内部 `principalId`、已存在的 team/asset space 及逐空间角色，然后通过受控 stdin 提交 JSON 请求；不得将真实主体、密码、数据库 URL 写入命令行参数、仓库、shell history、普通日志、工单正文或输出。stdout 只打印动作与匿名结果；异常仅打印通用错误。
 
-操作前由管理员检查现有 schema 版本；新 schema 经审定后按 `001_knowledge_transition_outbox.sql` → `003_asset_space_authorization_bindings.sql` → `004_workbench_identity_sessions.sql` → `006_identity_revocation_epoch.sql` → `008_web_oidc_login.sql` 手工迁移；已执行过的迁移不重复执行，Web 链路不含本机 TEST `005/007`。需由受控环境设置 `WORKBENCH_ADMIN_TEST_ONLY=1`、仅管理员可用的 `WORKBENCH_ADMIN_DATABASE_URL`（PostgreSQL `sslmode=verify-full`，主机名/CA 由部署端实际核实）；Web 运行 role 不授予表写权限。管理员审批与审计留在环境侧的受限系统，结果不包含个人身份。
+操作前由管理员检查现有 schema 版本；新 schema 经审定后按 `001_knowledge_transition_outbox.sql` → `003_asset_space_authorization_bindings.sql` → `004_workbench_identity_sessions.sql` → `006_identity_revocation_epoch.sql` → `008_web_oidc_login.sql` 手工迁移；已执行过的迁移不重复执行，Web 链路不含本机 TEST `005/007`。需由受控环境设置 `WORKBENCH_ADMIN_TEST_ONLY=1`、仅管理员可用的 `WORKBENCH_ADMIN_DATABASE_URL`（PostgreSQL `sslmode=verify-full`，主机名/CA 由部署端实际核实）；管理员 role 仅在获批维护窗口使用；Web 运行 role 需按实际登录／登出 SQL 最小化授予 session／attempt 的必要读写和身份／空间表的只读权限，不授予身份绑定、成员资格或空间角色表的写权限。管理员审批与审计留在环境侧的受限系统，结果不包含个人身份。
 
 私下生成符合以下**结构**的输入；示例值只能用于离线合成测试，不能直接绑定真实人员：
 
