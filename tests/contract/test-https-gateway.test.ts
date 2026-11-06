@@ -8,6 +8,8 @@ describe('isolated TEST Workbench HTTPS gateway template', () => {
     const text = template();
     expect(text).toContain('listen 443 ssl');
     expect(text).toContain('server_name workbench.example.invalid');
+    expect(text).toContain('if ($http_host != workbench.example.invalid) { return 421; }');
+    expect(text).not.toContain('if ($host != workbench.example.invalid)');
     expect(text).toContain('location = /auth');
     expect(text).toContain('location ^~ /auth/');
     expect(text).toContain('proxy_pass http://127.0.0.1:3411');
