@@ -20,6 +20,7 @@
     "packages/*"
   ],
   "dependencies": {
+    "openid-client": "^6.8.9",
     "pg": "^8.23.1",
     "semver": "^7.8.5",
     "zod": "^4.6.5"

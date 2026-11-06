@@ -1,5 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 
+type ApiHandler = (request: IncomingMessage, response: ServerResponse) => Promise<boolean>;
+
 const healthResponse = JSON.stringify({ status: 'ok' });
 
 const requestHandler = (request: IncomingMessage, response: ServerResponse): void => {
@@ -13,7 +15,19 @@ const requestHandler = (request: IncomingMessage, response: ServerResponse): voi
   response.end(JSON.stringify({ status: 'not_found' }));
 };
 
-export const createApiServer = () => createServer(requestHandler);
+export const createApiServer = (identity?: ApiHandler) => createServer(async (request, response) => {
+  if (request.method === 'GET' && request.url === '/healthz') {
+    requestHandler(request, response);
+    return;
+  }
+  try {
+    if (identity && await identity(request, response)) return;
+    requestHandler(request, response);
+  } catch {
+    if (!response.headersSent) response.writeHead(503, { 'cache-control': 'no-store', 'content-type': 'application/json' });
+    response.end(JSON.stringify({ status: 'unavailable' }));
+  }
+});
 
 const port = Number(process.env.PORT ?? 3000);
 
