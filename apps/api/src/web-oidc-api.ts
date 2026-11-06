@@ -188,7 +188,7 @@ export function createWebOidcApi(settings: Settings) {
           await connection.query('BEGIN');
           const identity = await connection.query<{ principal_id: string; revocation_epoch: string }>(
             `SELECT principal_id, revocation_epoch FROM workbench_identity_bindings
-             WHERE issuer = $1 AND subject = $2 AND status = 'active' FOR SHARE`, [issuer, claims.sub]);
+             WHERE issuer = $1 AND subject = $2 AND status = 'active'`, [issuer, claims.sub]);
           const binding = identity.rows[0];
           if (!binding) { await connection.query('ROLLBACK'); denied(response); return true; }
           if (previous) await connection.query(`UPDATE workbench_sessions SET revoked_at = CURRENT_TIMESTAMP

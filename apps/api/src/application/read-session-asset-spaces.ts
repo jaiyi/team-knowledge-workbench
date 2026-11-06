@@ -34,15 +34,14 @@ export const readSessionAssetSpaces = async (
 ): Promise<Result> => {
   const client = await database.connect();
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const session = await client.query<{ principal_id: string }>(
       `SELECT i.principal_id FROM workbench_sessions s
        JOIN workbench_identity_bindings i ON i.principal_id = s.principal_id
          AND i.status = 'active' AND i.revocation_epoch = s.identity_epoch
        WHERE s.handle_digest = $1 AND s.host_id = $2 AND s.environment = $3
          ${request.channel ? 'AND s.channel = $4' : ''}
-         AND s.revoked_at IS NULL AND s.expires_at > CURRENT_TIMESTAMP
-       FOR SHARE OF s, i`,
+         AND s.revoked_at IS NULL AND s.expires_at > CURRENT_TIMESTAMP`,
       request.channel
         ? [digestSessionHandle(request.sessionHandle), request.hostId, request.environment, request.channel]
         : [digestSessionHandle(request.sessionHandle), request.hostId, request.environment],
@@ -58,8 +57,7 @@ export const readSessionAssetSpaces = async (
          AND m.actor_id = $1 AND m.status = 'active'
        JOIN knowledge_role_bindings r ON r.actor_id = m.actor_id
          AND r.team_id = s.team_id AND r.asset_space_id = s.asset_space_id
-       ORDER BY s.team_id, s.asset_space_id
-       FOR SHARE OF s, m, r`,
+       ORDER BY s.team_id, s.asset_space_id`,
       [principalId],
     );
     const spaces = result.rows.reduce<Space[]>((found, row) => {
@@ -81,8 +79,7 @@ export const readSessionAssetSpaces = async (
       const bindings = await client.query<BindingRow>(
         `SELECT git_repository_id, git_protected_ref, weknora_space_id, config_version, status
          FROM asset_space_resource_bindings
-         WHERE team_id = $1 AND asset_space_id = $2
-         FOR SHARE`,
+         WHERE team_id = $1 AND asset_space_id = $2`,
         [selected.teamId, selected.assetSpaceId],
       );
       const row = bindings.rows[0];

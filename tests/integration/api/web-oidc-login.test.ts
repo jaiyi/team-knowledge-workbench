@@ -132,6 +132,23 @@ describe('independent Web OIDC (signed isolated issuer)', () => {
     }
   });
 
+  it('accepts a bound identity with a Web role that cannot update identity or grants', async () => {
+    const app = await setup();
+    await app.db.exec(`CREATE ROLE web_login;
+      GRANT SELECT ON workbench_identity_bindings, asset_spaces, team_memberships,
+        knowledge_role_bindings, asset_space_resource_bindings TO web_login;
+      GRANT SELECT, INSERT, UPDATE ON workbench_sessions, web_oidc_attempts TO web_login;
+      SET ROLE web_login`);
+    const login = await app.begin();
+    const response = await app.complete(login.callback, login.browserCookie);
+    expect(response.status).toBe(303);
+    const cookie = cookieJar(response);
+    expect((await (await fetch(`${app.origin}/auth/spaces`, { headers: { cookie } })).json()))
+      .toMatchObject({ ok: true, spaces: [{ teamId: 'team-a', assetSpaceId: 'space-a' }] });
+    await expect(app.db.query("UPDATE workbench_identity_bindings SET status = 'disabled' WHERE subject = 'memberA'"))
+      .rejects.toThrow('permission denied');
+  });
+
   it('binds two signed identities to current spaces, switches and revokes a browser session', async () => {
     const app = await setup();
     const loginA = await app.begin();

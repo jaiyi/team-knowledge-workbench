@@ -41,6 +41,19 @@ describe('internal Workbench session to current spaces (isolated PGlite)', () =>
     expect(await db.query('SELECT handle_digest FROM workbench_sessions')).toMatchObject({ rows: [{ handle_digest: digestSessionHandle(request.sessionHandle) }] });
   });
 
+  it('reads authorized spaces with a Web role that cannot write identity or grants', async () => {
+    const { db, read } = await setup();
+    await db.query("INSERT INTO team_memberships VALUES ('principal-a', 'team-a', 'active')");
+    await db.query("INSERT INTO knowledge_role_bindings VALUES ('principal-a', 'team-a', 'space-a', 'reviewer')");
+    await db.exec(`CREATE ROLE web_reader;
+      GRANT SELECT ON workbench_identity_bindings, workbench_sessions, asset_spaces,
+        team_memberships, knowledge_role_bindings, asset_space_resource_bindings TO web_reader;
+      SET ROLE web_reader`);
+    expect(await read()).toMatchObject({ ok: true, spaces: [selection], selected: selection });
+    await expect(db.query("UPDATE team_memberships SET status = 'disabled' WHERE actor_id = 'principal-a'"))
+      .rejects.toThrow('permission denied');
+  });
+
   it('requires the exact Host, environment, unexpired and unrevoked session', async () => {
     const { db, database, read } = await setup();
     expect(await read()).toEqual({ ok: true, spaces: [], selected: null, binding: null, bindingBlocker: null });
