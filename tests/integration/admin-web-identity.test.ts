@@ -57,6 +57,31 @@ describe('administrator-approved Web identity binding', () => {
       .toEqual([{ actor_id: 'principal-a', team_id: 'team-a', status: 'active' }]);
   });
 
+  it('binds a previously authorized principal without duplicating approved grants', async () => {
+    const { db, database } = await fixture();
+    await db.query("INSERT INTO team_memberships VALUES ('principal-a', 'team-a', 'active')");
+    await db.query("INSERT INTO knowledge_role_bindings VALUES ('principal-a', 'team-a', 'space-a', 'reviewer')");
+    const before = await state(db);
+    expect(await provisionWebIdentity(database, a)).toEqual({ action: 'provision', outcome: 'would_apply' });
+    expect(await state(db)).toEqual(before);
+    expect(await provisionWebIdentity(database, a, true)).toEqual({ action: 'provision', outcome: 'applied' });
+    const after = await state(db);
+    expect(after.identities).toHaveLength(1);
+    expect(after.memberships).toEqual(before.memberships);
+    expect(after.roles).toEqual(before.roles);
+    expect(await provisionWebIdentity(database, a, true)).toEqual({ action: 'provision', outcome: 'unchanged' });
+  });
+
+  it('adds only missing approved grants when binding an existing principal', async () => {
+    const { db, database } = await fixture();
+    await db.query("INSERT INTO team_memberships VALUES ('principal-a', 'team-a', 'active')");
+    expect(await provisionWebIdentity(database, a, true)).toEqual({ action: 'provision', outcome: 'applied' });
+    expect((await state(db)).memberships).toEqual([{ actor_id: 'principal-a', team_id: 'team-a', status: 'active' }]);
+    expect((await state(db)).roles).toEqual([{
+      actor_id: 'principal-a', team_id: 'team-a', asset_space_id: 'space-a', role: 'reviewer',
+    }]);
+  });
+
   it('is idempotent only for the same mapping and exact same grants', async () => {
     const { db, database } = await fixture();
     await provisionWebIdentity(database, a, true);

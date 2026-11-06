@@ -9,6 +9,6 @@
 - 开通：`{"action":"provision","issuer":"https://<approved-idp>/realms/workbench-test","subject":"<approved-stable-sub>","principalId":"<approved-internal-id>","grants":[{"teamId":"<approved-team>","assetSpaceId":"<existing-space>","role":"reviewer"}]}`
 - 停用：`{"action":"disable","issuer":"https://<approved-idp>/realms/workbench-test","subject":"<approved-stable-sub>","principalId":"<approved-internal-id>"}`
 
-执行器为 `./node_modules/.bin/tsx apps/api/scripts/admin-web-identity.ts`：无参数或 `--dry-run` 只核查并返回 `would_apply`／`unchanged`，任何写入均须显式 `--apply --confirm-test-only`。输入应从受限文件描述符或交互 stdin 送入，而非回显命令。请求拒绝未知字段、重复授权、现有冲突或不一致映射；遇已停用身份不隐式重启用。停用会将绑定和其成员资格置 disabled；既有 Web 会话因绑定状态与撤权 epoch 失效。进一步恢复须重新走审批流程，不得把 IdP 账号停用等同于本地会话即时撤销。
+执行器为 `./node_modules/.bin/tsx apps/api/scripts/admin-web-identity.ts`：无参数或 `--dry-run` 只核查并返回 `would_apply`／`unchanged`，任何写入均须显式 `--apply --confirm-test-only`。输入应从受限文件描述符或交互 stdin 送入，而非回显命令。请求拒绝未知字段、重复授权、现有冲突或不一致映射；对尚未绑定的内部主体，已存在且完全符合审批范围的 active 成员资格／空间角色保留原样，只补缺失授权，不重复插入；遇已停用身份不隐式重启用。停用会将绑定和其成员资格置 disabled；既有 Web 会话因绑定状态与撤权 epoch 失效。进一步恢复须重新走审批流程，不得把 IdP 账号停用等同于本地会话即时撤销。
 
 本地 PGlite 测试只覆盖事务与拒绝契约，不证明真实 PG TLS、迁移版本、DB role、IdP 及真实浏览器授权。目标 DB 登录和所有写入保持 `blocked/not_run`。

@@ -63,11 +63,16 @@ export async function provisionWebIdentity(database: Pick<Pool, 'connect'>, requ
     if (apply && !unchanged) {
       await connection.query(`INSERT INTO workbench_identity_bindings (issuer, subject, principal_id)
         VALUES ($1, $2, $3)`, [issuer, subject, principalId]);
-      for (const teamId of teams) await connection.query(`INSERT INTO team_memberships
-        (actor_id, team_id, status) VALUES ($1, $2, 'active')`, [principalId, teamId]);
-      for (const grant of request.grants) await connection.query(`INSERT INTO knowledge_role_bindings
-        (actor_id, team_id, asset_space_id, role) VALUES ($1, $2, $3, $4)`,
-      [principalId, grant.teamId, grant.assetSpaceId, grant.role]);
+      for (const teamId of teams) if (!memberships.rows.some((row) => row.team_id === teamId)) {
+        await connection.query(`INSERT INTO team_memberships
+          (actor_id, team_id, status) VALUES ($1, $2, 'active')`, [principalId, teamId]);
+      }
+      for (const grant of request.grants) if (!roles.rows.some((row) => row.team_id === grant.teamId
+        && row.asset_space_id === grant.assetSpaceId && row.role === grant.role)) {
+        await connection.query(`INSERT INTO knowledge_role_bindings
+          (actor_id, team_id, asset_space_id, role) VALUES ($1, $2, $3, $4)`,
+        [principalId, grant.teamId, grant.assetSpaceId, grant.role]);
+      }
     }
     await connection.query('COMMIT');
     return { action: request.action, outcome: unchanged ? 'unchanged' : apply ? 'applied' : 'would_apply' };
