@@ -46,6 +46,7 @@ const recordingDatabase = () => {
     events: [] as Event[], outbox: [] as string[],
   };
   let transaction: typeof committed | null = null;
+  let membership = true;
   let binding = true;
   let failOutbox = false;
   let conflictConstraint: string | null = null;
@@ -70,6 +71,10 @@ const recordingDatabase = () => {
       if (!transaction) throw new Error('Query outside transaction');
       if (sql.includes('FROM knowledge_states')) {
         return { rows: params[0] === transaction.state.knowledge_id ? [transaction.state] : [], rowCount: 1 };
+      }
+      if (sql.includes('FROM team_memberships')) {
+        return { rows: membership && params[0] === principal.actor.actor_id
+          && params[1] === transaction.state.team_id ? [{ actor_id: principal.actor.actor_id }] : [], rowCount: 1 };
       }
       if (sql.includes('FROM knowledge_role_bindings')) {
         return { rows: binding && params[0] === principal.actor.actor_id
@@ -112,6 +117,7 @@ const recordingDatabase = () => {
   return {
     database: { connect: async () => client } as unknown as Pick<Pool, 'connect'>,
     committed, statements,
+    revokeMembership: () => { membership = false; },
     revoke: () => { binding = false; },
     failOutbox: () => { failOutbox = true; },
     failEventConstraint: (constraint: string) => { conflictConstraint = constraint; },
@@ -160,6 +166,21 @@ describe('internal PostgreSQL transition transaction (recording client, not real
     const result = await recordKnowledgeTransition(db.database, principal, knowledge, command, verifier);
     expect(result).toMatchObject({ ok: false, kind: 'authorization' });
     expect(db.committed.outbox).toHaveLength(0);
+  });
+
+  it('rechecks current membership before replay or evidence verification', async () => {
+    const db = recordingDatabase();
+    let verified = 0;
+    const countingVerifier: KnowledgeEvidenceVerifier = { verify: (asset, cmd) => {
+      verified += 1;
+      return verifier.verify(asset, cmd);
+    } };
+    expect((await recordKnowledgeTransition(db.database, principal, knowledge, command, countingVerifier)).ok).toBe(true);
+    db.revokeMembership();
+    expect(await recordKnowledgeTransition(db.database, principal, knowledge, command, countingVerifier))
+      .toMatchObject({ ok: false, kind: 'authorization' });
+    expect(verified).toBe(1);
+    expect(db.committed.events).toHaveLength(1);
   });
 
   it('does not let a new database grant borrow a role missing from the principal snapshot', async () => {

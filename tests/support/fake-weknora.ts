@@ -73,7 +73,9 @@ export const createFakeWeKnora = () => {
   return {
     inspect: (operationId: string) => {
       const operation = operations.get(operationId);
-      return operation ? { operation_id: operationId, status: operation.status } : null;
+      return operation ? { operation_id: operationId, idempotency_key: operation.request.idempotencyKey,
+        knowledge_id: operation.request.asset.knowledge_id,
+        asset_revision: operation.request.asset.asset_revision, status: operation.status } : null;
     },
     ingest: (request: Request) => {
       if (request.asset.status !== 'publishing' || !request.asset.source_commit) {

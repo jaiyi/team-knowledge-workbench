@@ -1,7 +1,28 @@
 import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import type { ProviderOperationStatus } from '../../packages/contracts/src/index.js';
+import type { ProviderOperationStatus, WeKnoraReadbackEvidence, RetrievalSmokeEvidence } from '../../packages/contracts/src/index.js';
 import type { Request } from './fake-weknora.js';
+import type { createFakeWeKnora } from './fake-weknora.js';
+
+type CallbackIdentity = {
+  operationId: string; idempotencyKey: string; knowledgeId: string; assetRevision: number;
+  sequence: number;
+};
+type FakeProvider = ReturnType<typeof createFakeWeKnora>;
+
+const hasMatchingEvidence = (request: Request, evidence: ReturnType<FakeProvider['readEvidence']>) => {
+  const readback = evidence.find((entry): entry is WeKnoraReadbackEvidence => entry.kind === 'weknora_readback');
+  const retrieval = evidence.find((entry): entry is RetrievalSmokeEvidence => entry.kind === 'retrieval_smoke');
+  const asset = request.asset;
+  return !!readback && !!retrieval && readback.status === 'succeeded'
+    && readback.operation_id === request.operationId && readback.knowledge_id === asset.knowledge_id
+    && readback.version === asset.version && readback.asset_revision === asset.asset_revision
+    && readback.asset_space_id === asset.asset_space_id && readback.repo_path === asset.repo_path
+    && readback.source_commit === asset.source_commit && readback.acl_digest === asset.expected_acl_digest
+    && retrieval.status === 'succeeded' && retrieval.operation_id === request.operationId
+    && retrieval.knowledge_id === asset.knowledge_id && retrieval.version === asset.version
+    && retrieval.asset_revision === asset.asset_revision;
+};
 
 type Metadata = {
   operationId: string;
@@ -52,7 +73,8 @@ export const createFakeDurableOperation = (path: string) => {
     status TEXT NOT NULL,
     version INTEGER NOT NULL,
     lease_token TEXT,
-    lease_expires_at INTEGER
+    lease_expires_at INTEGER,
+    callback_sequence INTEGER NOT NULL DEFAULT 0
   );
   CREATE TABLE IF NOT EXISTS fake_events (
     event_id TEXT PRIMARY KEY,
@@ -163,8 +185,36 @@ export const createFakeDurableOperation = (path: string) => {
       advance(operationId, token, version, now, 'unknown', ['running', 'waiting_readback']),
     markReconciled: (
       operationId: string, token: string, version: number, now: number,
-      status: 'succeeded' | 'reconciling',
-    ) => advance(operationId, token, version, now, status, ['unknown', 'reconciling', 'waiting_readback']),
+      callback: CallbackIdentity, provider: FakeProvider,
+    ) => {
+      const row = db.prepare('SELECT callback_sequence FROM fake_operations WHERE operation_id = ?')
+        .get(operationId) as { callback_sequence: number } | undefined;
+      const current = read(operationId);
+      if (!current || !row || !Number.isSafeInteger(callback.sequence)
+        || callback.sequence <= row.callback_sequence
+        || !['unknown', 'reconciling', 'waiting_readback'].includes(current.status)
+        || current.leaseToken !== token || current.version !== version
+        || current.leaseExpiresAt === null || current.leaseExpiresAt <= now
+        || callback.operationId !== operationId || callback.idempotencyKey !== current.idempotencyKey
+        || callback.knowledgeId !== current.knowledgeId || callback.assetRevision !== current.assetRevision)
+        return null;
+      const request = readRequest(operationId);
+      if (!request) return null;
+      const observed = provider.inspect(operationId);
+      if (!observed || observed.operation_id !== operationId
+        || observed.idempotency_key !== request.idempotencyKey
+        || observed.knowledge_id !== request.asset.knowledge_id
+        || observed.asset_revision !== request.asset.asset_revision
+        || !['succeeded', 'reconciling'].includes(observed.status)) return null;
+      const status = observed.status === 'succeeded' && hasMatchingEvidence(request, provider.readEvidence(operationId))
+        ? 'succeeded' : 'reconciling';
+      const result = db.prepare(`UPDATE fake_operations
+        SET status = ?, version = version + 1, callback_sequence = ?
+        WHERE operation_id = ? AND version = ? AND lease_token = ? AND lease_expires_at > ?
+          AND callback_sequence < ? AND status IN ('unknown', 'reconciling', 'waiting_readback')`)
+        .run(status, callback.sequence, operationId, version, token, now, callback.sequence);
+      return result.changes === 1 ? read(operationId) : null;
+    },
     read,
     close: () => db.close(),
   };

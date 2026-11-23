@@ -29,6 +29,8 @@ const metadata = {
   correlationId: request.correlationId,
   knowledgeId: asset.knowledge_id, assetRevision: asset.asset_revision,
 };
+const callback = { operationId: 'op-1', idempotencyKey: 'key-1',
+  knowledgeId: asset.knowledge_id, assetRevision: asset.asset_revision, sequence: 1 };
 const readback = {
   operation_id: 'op-1', knowledge_id: asset.knowledge_id, version: asset.version,
   asset_revision: asset.asset_revision, asset_space_id: asset.asset_space_id,
@@ -124,7 +126,7 @@ describe('isolated durable fake operation recovery', () => {
       expect(provider.complete(lease.operationId, observed, retrieval).status).toBe(status);
       expect(provider.readEvidence(lease.operationId).map((item) => item.kind))
         .toEqual(outcome === 'verified' ? ['weknora_readback', 'retrieval_smoke'] : []);
-      expect(recovered.markReconciled(lease.operationId, 'lease-b', waiting.version, 112, status)?.status)
+      expect(recovered.markReconciled(lease.operationId, 'lease-b', waiting.version, 112, callback, provider)?.status)
         .toBe(status);
       expect(provider.operationCount()).toBe(1);
       recovered.close();
@@ -177,7 +179,7 @@ describe('isolated durable fake operation recovery', () => {
       expect(provider.reconcile(lease.operationId, observed, retrieval).status).toBe(status);
       expect(provider.readEvidence(lease.operationId).map((item) => item.kind))
         .toEqual(outcome === 'verified' ? ['weknora_readback', 'retrieval_smoke'] : []);
-      expect(recovered.markReconciled(lease.operationId, 'lease-b', unknown.version, 113, status)?.status)
+      expect(recovered.markReconciled(lease.operationId, 'lease-b', unknown.version, 113, callback, provider)?.status)
         .toBe(status);
       expect(provider.operationCount()).toBe(1);
       recovered.close();
@@ -367,7 +369,7 @@ describe('isolated durable fake operation recovery', () => {
     expect(first.markWaiting('op-1', 'lease-a', 0, 101)).toBeNull();
     expect(second.claim('op-1', 'lease-b', 110, 10)).toMatchObject({ version: 2 });
     expect(first.markWaiting('op-1', 'lease-a', 1, 110)).toBeNull();
-    expect(first.markReconciled('op-1', 'lease-a', 1, 110, 'succeeded')).toBeNull();
+    expect(first.markReconciled('op-1', 'lease-a', 1, 110, callback, createFakeWeKnora())).toBeNull();
     expect(second.markWaiting('op-1', 'lease-b', 2, 111)).toMatchObject({ status: 'waiting_readback', version: 3 });
     first.close();
     second.close();
@@ -409,11 +411,89 @@ describe('isolated durable fake operation recovery', () => {
     recovered.close();
   });
 
+  it.each(['accepted', 'not_sent'] as const)(
+    'recovers a lost fake provider response after a worker exit (%s)', (outcome) => {
+      const path = databasePath();
+      const provider = createFakeWeKnora();
+      const first = createFakeDurableOperation(path);
+      first.recordEvent('event-1', metadata, request);
+      first.close();
+      const sent = spawnSync(process.execPath, [
+        '--import', 'tsx', '--input-type=module', '-e', `
+          import { createFakeDurableOperation } from './tests/support/fake-durable-operation.ts';
+          const store = createFakeDurableOperation(process.argv[1]);
+          if (!store.claim('op-1', 'lease-a', 100, 10)) process.exit(1);
+          process.exit(0);
+        `, path,
+      ], { cwd: process.cwd(), encoding: 'utf8' });
+      expect(sent.status).toBe(0);
+      // The fake provider lives in this test process: this simulates acceptance, not provider recovery.
+      if (outcome === 'accepted') expect(provider.ingest(request).status).toBe('waiting_readback');
+      const recovered = createFakeDurableOperation(path);
+      expect(recovered.readEvent('event-1')).toBe('op-1');
+      const persisted = recovered.readRequest('op-1')!;
+      expect(persisted.idempotencyKey).toBe('key-1');
+      const lease = recovered.claim('op-1', 'lease-b', 110, 10)!;
+      const observed = provider.inspect(persisted.operationId);
+      if (!observed) expect(provider.ingest(persisted).status).toBe('waiting_readback');
+      else expect(observed.status).toBe('waiting_readback');
+      expect(recovered.markWaiting('op-1', 'lease-a', 1, 111)).toBeNull();
+      expect(recovered.markWaiting('op-1', 'lease-b', lease.version, 111)?.status).toBe('waiting_readback');
+      expect(provider.ingest(persisted).operation_id).toBe('op-1');
+      expect(provider.operationCount()).toBe(1);
+      recovered.close();
+    },
+  );
+
+  it('rejects forged, duplicate, stale and cross-operation fake callbacks without false success', () => {
+    const path = databasePath();
+    const provider = createFakeWeKnora();
+    const store = createFakeDurableOperation(path);
+    store.recordEvent('event-1', metadata, request);
+    const lease = store.claim('op-1', 'lease-a', 100, 10)!;
+    provider.ingest(request);
+    const waiting = store.markWaiting('op-1', 'lease-a', lease.version, 101)!;
+    for (const wrong of [
+      { ...callback, operationId: 'op-other' }, { ...callback, idempotencyKey: 'key-other' },
+      { ...callback, knowledgeId: 'knowledge-other' }, { ...callback, assetRevision: 2 },
+    ]) expect(store.markReconciled('op-1', 'lease-a', waiting.version, 102, wrong, provider)).toBeNull();
+    const wrongProvider = createFakeWeKnora();
+    wrongProvider.ingest({ ...request, idempotencyKey: 'key-other', asset: { ...asset, asset_revision: 2 } });
+    wrongProvider.complete('op-1', { ...readback, asset_revision: 2 }, { ...retrieval, asset_revision: 2 });
+    expect(store.markReconciled('op-1', 'lease-a', waiting.version, 102, callback, wrongProvider)).toBeNull();
+    expect(store.markReconciled('op-1', 'lease-a', waiting.version, 102, callback, provider)).toBeNull();
+    expect(store.read('op-1')).toMatchObject({ status: 'waiting_readback', version: waiting.version });
+    expect(provider.complete('op-1', { ...readback, asset_space_id: 'space-other' }, retrieval).status)
+      .toBe('reconciling');
+    const mismatch = store.markReconciled('op-1', 'lease-a', waiting.version, 103, callback, provider)!;
+    expect(mismatch.status).toBe('reconciling');
+    expect(store.markReconciled('op-1', 'lease-a', mismatch.version, 104, callback, provider)).toBeNull();
+    expect(store.markReconciled('op-1', 'lease-a', mismatch.version, 105,
+      { ...callback, sequence: 0 }, provider)).toBeNull();
+    expect(store.markReconciled('op-1', 'lease-a', waiting.version, 104, callback, provider)).toBeNull();
+    expect(store.markReconciled('op-1', 'lease-a', mismatch.version, 110, callback, provider)).toBeNull();
+    expect(store.read('op-1')).toMatchObject({ status: 'reconciling', version: mismatch.version });
+    const nextLease = store.claim('op-1', 'lease-b', 110, 10)!;
+    expect(store.markReconciled('op-1', 'lease-a', mismatch.version, 111, callback, provider)).toBeNull();
+    expect(provider.reconcile('op-1', readback, retrieval).status).toBe('succeeded');
+    expect(store.markReconciled('op-1', 'lease-b', nextLease.version, 112, callback, provider)).toBeNull();
+    const success = store.markReconciled('op-1', 'lease-b', nextLease.version, 112,
+      { ...callback, sequence: 2 }, provider)!;
+    expect(success.status).toBe('succeeded');
+    expect(store.markReconciled('op-1', 'lease-b', nextLease.version, 113, callback, provider)).toBeNull();
+    expect(store.read('op-1')).toEqual(success);
+    store.close();
+    const reopened = createFakeDurableOperation(path);
+    expect(reopened.read('op-1')).toEqual(success);
+    expect(reopened.claim('op-1', 'lease-c', 120, 10)).toBeNull();
+    reopened.close();
+  });
+
   it.each(['completed', 'pending', 'mismatch'] as const)('keeps timed-out %s results subject to final read-back', (outcome) => {
     const path = databasePath();
     const provider = createFakeWeKnora();
     const first = createFakeDurableOperation(path);
-    first.enqueue(metadata);
+    first.recordEvent('event-1', metadata, request);
     const sent = first.claim('op-1', 'lease-a', 100, 10)!;
     provider.ingest(request);
     const waiting = first.markWaiting('op-1', 'lease-a', sent.version, 101)!;
@@ -432,7 +512,7 @@ describe('isolated durable fake operation recovery', () => {
     if (outcome === 'completed') {
       expect(observed?.status).toBe('succeeded');
       expect(evidence.map((item) => item.kind)).toEqual(['weknora_readback', 'retrieval_smoke']);
-      expect(recovered.markReconciled('op-1', 'lease-b', lease.version, 111, 'succeeded')?.status).toBe('succeeded');
+      expect(recovered.markReconciled('op-1', 'lease-b', lease.version, 111, callback, provider)?.status).toBe('succeeded');
       const command = {
         transition_id: 'transition-publish', idempotency_key: request.idempotencyKey,
         correlation_id: request.correlationId, asset_space_id: asset.asset_space_id,
@@ -451,7 +531,7 @@ describe('isolated durable fake operation recovery', () => {
     } else {
       expect(observed?.status).toBe('reconciling');
       expect(evidence.some((item) => item.kind === 'weknora_readback')).toBe(false);
-      expect(recovered.markReconciled('op-1', 'lease-b', lease.version, 111, 'reconciling')?.status).toBe('reconciling');
+      expect(recovered.markReconciled('op-1', 'lease-b', lease.version, 111, callback, provider)?.status).toBe('reconciling');
       expect(recovered.read('op-1')?.status).not.toBe('succeeded');
     }
     expect(provider.operationCount()).toBe(1);

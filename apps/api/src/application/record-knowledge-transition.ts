@@ -95,6 +95,15 @@ export const recordKnowledgeTransition = async (
       await client.query('ROLLBACK');
       return { ok: false, kind: 'authorization', message: 'Not authorized for Knowledge transition' };
     }
+    const membershipResult = await client.query(
+      `SELECT actor_id FROM team_memberships
+       WHERE actor_id = $1 AND team_id = $2 AND status = 'active'
+       FOR SHARE`, [principal.actor.actor_id, state.team_id],
+    );
+    if (membershipResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return { ok: false, kind: 'authorization', message: 'Not authorized for Knowledge transition' };
+    }
     const bindingResult = await client.query(
       `SELECT role FROM knowledge_role_bindings
        WHERE actor_id = $1 AND team_id = $2 AND asset_space_id = $3 AND role = ANY($4::text[])

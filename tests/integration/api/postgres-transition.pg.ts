@@ -8,6 +8,7 @@ import type { AuthenticatedPrincipal, KnowledgeEvidenceVerifier } from '../../..
 import { recordKnowledgeTransition } from '../../../apps/api/src/application/record-knowledge-transition.js';
 
 const migration = readFileSync(new URL('../../../apps/api/migrations/001_knowledge_transition_outbox.sql', import.meta.url), 'utf8');
+const authorizationMigration = readFileSync(new URL('../../../apps/api/migrations/003_asset_space_authorization_bindings.sql', import.meta.url), 'utf8');
 const digest = `sha256:${'a'.repeat(64)}`;
 const knowledge = {
   knowledge_id: 'knowledge.test.case', version: '1.0.0', status: 'captured',
@@ -94,7 +95,9 @@ const setup = async () => {
   const activeSchema = await pool.query<{ schema: string }>('SELECT current_schema() AS schema');
   if (activeSchema.rows[0]?.schema !== schema) throw new Error('Test schema was not selected');
   await pool.query(migration);
+  await pool.query(authorizationMigration);
   await pool.query("INSERT INTO asset_spaces VALUES ('space-a', 'team-a'), ('space-b', 'team-b')");
+  await pool.query("INSERT INTO team_memberships VALUES ('human-1', 'team-a', 'active')");
   await pool.query("INSERT INTO knowledge_role_bindings VALUES ('human-1', 'team-a', 'space-a', 'steward')");
   const assetDigest = `sha256:${createHash('sha256').update(JSON.stringify(knowledge)).digest('hex')}`;
   await pool.query('INSERT INTO knowledge_states VALUES ($1, $2, $3, $4, $5, $6, $7)',
