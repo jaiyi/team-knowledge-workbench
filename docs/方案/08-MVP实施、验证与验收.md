@@ -8,7 +8,7 @@
 
 采用：**一个知识域、一个高频低风险工作流、一个 Git provider、一个 worker、一个知识 steward、一个 Skill owner、一个发布目标、一个下游 Harness 验证环境和一个腾讯云非生产部署环境**。
 
-每个阶段留下版本、环境、fixture、运行命令、预期/实际结果、失败动作、owner、回滚方式和 Go/No-Go 决策。P0 的部署对象是 Team Knowledge Backend、worker、PostgreSQL、对象存储、现有 WeKnora 的独立测试空间，以及目标版本可确认时的 DSH/Harness、SkillHub 和 TeamLab 服务或 provider；DSH Desktop Electron 客户端通过本地/市场安装 Workbench Plugin，不作为腾讯云服务部署。拟复用 DSH Desktop 身份上下文但须在阶段 2 验证安全交换与撤权；不以公司统一身份系统接入作为 P0 前提，未验证前不得写真实团队资产。
+每个阶段留下版本、环境、fixture、运行命令、预期/实际结果、失败动作、owner、回滚方式和 Go/No-Go 决策。P0 的部署对象是 Team Knowledge Backend、worker、PostgreSQL、对象存储、现有 WeKnora 的独立测试空间，以及目标版本可确认时的 DSH/Harness、SkillHub 和 TeamLab 服务或 provider；DSH Desktop Electron 客户端通过本地/市场安装 Workbench Plugin，不作为腾讯云服务部署。Workbench 的真实人员入口改走独立 OIDC Web/Backend 登录与短期会话：获准测试 IdP 在阶段 2 验证系统浏览器→Workbench Web/Backend、可信 Backend 地址及撤权；仅插件面板需使用个性化身份时另验目标 Host 安全回程。DSH 原生逐人知识查询须另验 MCP 端可验证的人员身份和当前 ACL；企业 IdP 后另核配置和合规；企业统一身份集成不作为 P0 package 安装前提，但未验证的 IdP/会话/授权不得用于真实团队资产写入。
 
 ## 2. 实施路线推荐
 
@@ -86,7 +86,7 @@ Provider 不得只用一句“如启用”描述。阶段 0 需要建立并持�
 
 - **目标**：先证明身份、隔离和最短发布链可行，再决定真实 Provider 接入顺序。
 - **输入**：阶段 1 契约、目标 DSH/Git/WeKnora 版本、TeamAI 分发候选版本、SkillHub（仅独立 Registry 需求获批时）的目标版本，以及获准的隔离非生产测试身份/凭据和合成 Tool Demo Provider；不得输入生产凭据。
-- **主要设计/开发项**：完成 DSH auth context 到 `principal_id`、`team_id`、`asset_space_id` 的可验证交换设计与后端重新授权；验证 Workbench 安装时 Backend 地址/环境的受信分发与拒绝错误目标；完成 Git webhook/merge event 的签名、重放、乱序、旧 SHA 和幂等 Spike；完成 Git → fake WeKnora → read-back 的 ID、路径、版本、source commit、ACL 和检索映射，再对真实 WeKnora 测试 space 验证；**实测**目标版本按 document ID/版本下架、ACL 收紧、旧 path/旧索引的负向检索与直连访问阻断（不能只测有权正向命中），记录不支持时的隔离限制与 blocked 状态；完成 Git MR/CI/指定审核人/protected merge→固定 Skill package/digest、DSH 目标校验/loader 的 Spike，优先验证 TeamAI 分发与逐目标读回；独立 Registry 契约有需求时才验证 SkillHub release，否则记录管理员固定包 fallback；以标准 Tool/MCP 契约在隔离非生产环境调用只读合成 Demo Tool，验证发现、详情、主体/字段权限/环境、受控试参、来源与审计/失败回执；验证管理员配置草案、连接检查的权限范围/非生产 fixture/真实读回、密钥引用轮换与旧配置在途操作的对账；为各 Provider 记录 `provider_mode`、`integration_status`、版本、环境、owner、阻塞原因和 fallback；注入 timeout、重复提交、响应丢失、read-back 不一致和迟到回调。
+- **主要设计/开发项**：完成独立 Workbench OIDC 测试 IdP 的 `(issuer,sub)` 到 `principal_id` 的验证与映射设计，Backend 按当前成员/角色重查 `team_id`、`asset_space_id`；固定目标版本分别实测系统浏览器→独立 Web/Backend 登录、可信 Backend 地址/环境分发、短期会话与登出/撤权拒绝；只有个性化插件面板另验原 Host 安全回程；DSH 原生逐人知识查询另按 T30 验 MCP 身份证明与服务端当前 ACL，完成 Git webhook/merge event 的签名、重放、乱序、旧 SHA 和幂等 Spike；完成 Git → fake WeKnora → read-back 的 ID、路径、版本、source commit、ACL 和检索映射，再对真实 WeKnora 测试 space 验证；**实测**目标版本按 document ID/版本下架、ACL 收紧、旧 path/旧索引的负向检索与直连访问阻断（不能只测有权正向命中），记录不支持时的隔离限制与 blocked 状态；完成 Git MR/CI/指定审核人/protected merge→固定 Skill package/digest、DSH 目标校验/loader 的 Spike，优先验证 TeamAI 分发与逐目标读回；独立 Registry 契约有需求时才验证 SkillHub release，否则记录管理员固定包 fallback；以标准 Tool/MCP 契约在隔离非生产环境调用只读合成 Demo Tool，验证发现、详情、主体/字段权限/环境、受控试参、来源与审计/失败回执；验证管理员配置草案、连接检查的权限范围/非生产 fixture/真实读回、密钥引用轮换与旧配置在途操作的对账；为各 Provider 记录 `provider_mode`、`integration_status`、版本、环境、owner、阻塞原因和 fallback；注入 timeout、重复提交、响应丢失、read-back 不一致和迟到回调。
 - **Spike 记录格式**：每个 Spike 单独登记 `hypothesis`、`timebox`、`fixture`、`expected_result`、`actual_result`、`decision`、`owner`、`evidence_digest` 和对后续阶段的影响；至少拆分为控制面/跨团队拒绝、Git → outbox → worker → WeKnora、Skill package/digest/fallback、Workbench Plugin 安装，以及 **DSH 原生会话最小消费/知识引用观测**五类实验。最后一类须固定 Desktop/Harness commit、profile、插件身份和数据 owner 授权，用合成非生产会话分别检查宿主事件订阅/有权 Session Query、真实 Skill 调用与尝试、加载包 digest 映射、知识查询/零结果/检索/答案实际引用、漏投底账、权限撤销和字段白名单；先定是否能接入，再决定是否用 OTel/OTLP 作为技术观测传输，不能预设其能提供未采样分母或业务结果。**R-05 评论回合另建 Spike**：用有权合成评论验证真实投递、唯一 turn/comment、持久 reply、成功/失败/取消/超时终态、刷新读回及最小化权限边界，不拿上述消费观测或 OTel span 代替回复完成；缺契约只保留 Workbench 评论和人工改写。**R-09 来源链接另建 Spike**：个人 Inbox/导航只存定位且零抓取；知识入口用户明确选用、来源/用途/空间授权后，以隔离非生产脱敏链接验证限定来源、每跳重定向/DNS/实际地址、文件内容和解析器安全，失败只留最小待核定位；未通过则该链接抓取能力不开放，不能以管理员连接检查通过替代。失败时只能选择调整设计、保留 fallback 或阻断后续阶段，不得以“接口可访问”代替成功。
 - **输出**：Provider capability matrix、Spike fixture、fake provider、真实 Provider blocker 清单、evidence manifest 模板和 read-back 字段映射。
 - **测试**：contract、sandbox integration、签名/重放、故障注入和凭据扫描；真实 Provider 仅在非生产执行。
@@ -111,7 +111,7 @@ Provider 不得只用一句“如启用”描述。阶段 0 需要建立并持�
 - **输入**：身份 Spike、权限矩阵、repository binding 和控制面骨架。
 - **主要设计/开发项**：实现 principal、membership、role binding、ACL、service identity 和资源范围校验；实现 repository identity 唯一性、路径规范化及绝对路径、`..`、符号链接逃逸拒绝；拆分创建、编辑、审核、发布、对账、回滚和指标查看权限；为 Git bot、WeKnora adapter、publisher 和 Worker 使用独立 credential binding；增加仅管理员可进入的「团队空间与连接」站内子页/Backend API：按空间维护配置草案、版本与激活状态，检查 Git、WeKnora 和按需启用的 Skill/DSH 目标绑定，展示非敏感状态、读回证据和责任人，Secret Manager 只保留服务端引用、不得回显明文；PostgreSQL/对象存储连接仍由平台运维配置而非团队用户填写。记录 `approved_by`、`released_by`、`executed_by`、`reconciled_by` 和接管原因。所有查询、写入、session、job、outbox、callback 和 provider operation 都必须由服务端从认证上下文推导并绑定 `team_id`/`asset_space_id`；repository、WeKnora space 和 distribution target 不能由客户端覆盖；数据库约束、RLS 或等价 repository 层策略必须防止漏加隔离过滤。
 - **输出**：身份/权限模块、ACL middleware、repository binding、审计事件、权限 API 和最小授权配置。
-- **测试**：权限矩阵、两个 asset-space isolation、跨团队读写、路径逃逸、凭据复用、成员撤销和服务身份边界 security tests；两台独立 Desktop 安装同一包后分别读自己的有权空间，普通用户不能读/改连接或回显密钥；平台/空间管理员分别做错 repo/space、越权目标、失效凭据、配置版本冲突、连接超时、轮换及激活回滚测试，外调中的旧配置按原目标读回对账。
+- **测试**：权限矩阵、两个 asset-space isolation、跨团队读写、路径逃逸、凭据复用、成员撤销和服务身份边界 security tests；独立 Web/Backend 双主体分别读当前有权空间，两台独立 Desktop 安装同一包的面板功能另验，只有个性化面板需要人员会话时才按目标 Host 回程门验其双端隔离；普通用户不能读/改连接或回显密钥；平台/空间管理员分别做错 repo/space、越权目标、失效凭据、配置版本冲突、连接超时、轮换及激活回滚测试，外调中的旧配置按原目标读回对账。
 - **隔离硬门禁**：必须覆盖跨团队资源 ID、伪造/重放 merge event、旧 callback、客户端篡改 team/asset-space、权限撤销后的已有 session/异步任务/回调、repository path 穿越和 Worker 使用错误 service identity；任一负向测试失败，不得进入真实数据、真实 Provider 或试点。
 - **证据**：隔离报告、授权日志、审计查询、credential binding 清单和 secret scan。
 - **退出条件**：同一 Workbench 服务于两个 asset-space 时，草稿、检索、任务、发布、指标和审计完全隔离；客户端不能扩大授权；有权管理员可在站内绑定/检查/激活/停用受限连接并查询错误与证据，普通成员无需逐机配置 Provider，数据库与共享密钥不出服务端。
@@ -156,7 +156,7 @@ Provider 不得只用一句“如启用”描述。阶段 0 需要建立并持�
 
 - **目标**：在 Skill 包和控制面稳定后，按固定 digest 逐段验证真实发布（若选 SkillHub 或经 ADR 批准的等价实现）、可选分发和 Harness load；不建设 Harness Runtime。
 - **输入**：immutable package/digest、Provider 版本、目标 profile、非生产凭据和 handoff contract。
-- **主要设计/开发项**：先按选型门验证 SkillHub register/release/read-back（若选择；否则按 ADR 验证等价实现或标注受控管理员固定包）；TeamAI（如启用）仅消费固定批准包：实测同仓/经审核镜像仓的 Git 版本对应、成员在有权 workspace/user scope 首次 `init` 和最小只读 Git 授权、SessionStart Hook 在目标 DSH 的触发时点与主动 `pull`、目标目录/已装文件清单和摘要、离线重连、本地编辑冲突及撤回残留；逐目标完成读回后才记 installed，不能因仓库 merge 或连接卡检查成功推断全员自动安装；验证 DSH discovery、显式 load、profile/tool policy、loaded digest 和版本不兼容拒绝；原生会话要调用 WeKnora 时另验只读 Plugin/MCP 或受控查询工具、身份/空间 ACL、来源引用、撤权拒绝与配置模板的安全安装，不因 Skill 同步或 WeKnora 端点可访问即声称检索已接通；统一 `requested → submitted → provider_pending → readback_verified → succeeded`，异常进入 `unknown → reconciling`；执行 `build → package → digest → fresh-profile install → restart → load report/read-back → 功能 smoke → disable/uninstall/rollback`。
+- **主要设计/开发项**：先按选型门验证 SkillHub register/release/read-back（若选择；否则按 ADR 验证等价实现或标注受控管理员固定包）；TeamAI（如启用）仅消费固定批准包：实测同仓/经审核镜像仓的 Git 版本对应、成员在有权 workspace/user scope 首次 `init` 和最小只读 Git 授权、SessionStart Hook 在目标 DSH 的触发时点与主动 `pull`、目标目录/已装文件清单和摘要、离线重连、本地编辑冲突及撤回残留；逐目标完成读回后才记 installed，不能因仓库 merge 或连接卡检查成功推断全员自动安装；验证 DSH discovery、显式 load、profile/tool policy、loaded digest 和版本不兼容拒绝；原生会话要调用 WeKnora 时另按 T30 验只读 Plugin/MCP 或受控查询工具的逐人证明、服务端身份/空间/对象 ACL、来源引用、撤权拒绝与配置模板的安全安装，不因 Skill 同步、loaded 或 WeKnora 端点可访问即声称有权检索已接通；统一 `requested → submitted → provider_pending → readback_verified → succeeded`，异常进入 `unknown → reconciling`；执行 `build → package → digest → fresh-profile install → restart → load report/read-back → 功能 smoke → disable/uninstall/rollback`。
 - **输出**：Provider integration evidence、pinned digest chain、handoff/load read-back、故障恢复和回滚结果，或明确 fallback/blocked 结论。
 - **测试**：非生产 contract/integration/E2E；版本漂移、目标错误、权限越界、安装失败、回滚、超时、read-back mismatch 和迟到回调；security review。
 - **证据**：目标版本/环境、package/fixture digest、命令及退出码、各层 read-back、失败/回滚、执行/复核人及证据 digest。
@@ -188,7 +188,7 @@ Provider 不得只用一句“如启用”描述。阶段 0 需要建立并持�
 ### 交付
 
 - 一批明确标为合成、可回放的知识材料、已有版本、项目×产品线及权限主体 fixture；真实业务样本仅在另获授权、完成脱敏并进入相应试点门禁后使用；
-- 腾讯云非生产 Team Knowledge Backend、worker、PostgreSQL、对象存储、网络/TLS、DSH auth context 映射、日志脱敏、备份恢复和监控基础；
+- 腾讯云非生产 Team Knowledge Backend、worker、PostgreSQL、对象存储、网络/TLS、独立 OIDC 身份映射与可撤销会话的设计契约（测试 IdP/Web/Backend 实测列阶段 2 门禁；仅个性化插件面板另验目标 Host 回程）、日志脱敏、备份恢复和监控基础；
 - 已有 WeKnora 的独立测试 space，以及 Git↔WeKnora mapping 的验证数据；
 - DSH/Harness、SkillHub 和 TeamLab 的目标版本、部署制品和健康检查验证；若无法确认，记录 blocker 并启用管理员/fake provider fallback；
 - `team-knowledge-workbench` 的 package skeleton、server/client contract、构建产物和一次内部安装/重启/read-back 验证；同时冻结可信 Backend 地址/环境的安装分发契约，确认客户端不持 Git/WeKnora/PostgreSQL/TeamAI **共享服务凭据**；TeamAI 若选用时成员授权的目标端 Git 只读身份与首次 `init` 另列；
@@ -308,7 +308,7 @@ P4 的 Plugin 不再采用“最后一次性集成”方式。详细的适用能
 |---|---|---|
 | V-01 | 工作台与会话入口 | 五个一级入口一致（首项「我的工作台」）；本人可按需查看私人 Inbox、获权使用与反馈，不以暂存作为开始任务的前置步骤；材料/Skill 候选仅在进入正式创作或修订时创建正确的 Creation Session；首次使用能说明本次任务可获得什么、需要谁确认，回访可一键回到未完成动作；首页不得把发布数当业务价值 |
 | V-02 | Workbench Plugin 安装 | package、canonical repository、digest、安装、重启、enabled/UI read-back 可验证；安装不被报告为资产发布 |
-| V-03 | 多团队资产隔离与集中配置 | 两台以上 Desktop 安装同一 Workbench，受信 Backend 地址/环境分发和身份交换可验；普通用户仅见本人有权空间、不逐机填 Provider 共享凭据；team/asset-space/Git/WeKnora/ACL/session/审计互相隔离；管理员子页可按权限做配置草案→连接检查→激活/停用，版本并发、密钥轮换/不回显、旧操作对账和失败回滚可验证；如选 TeamAI，卡片仅允许绑定获批仓库/target、pull 模式及逐设备 init/授权状态，不把配置通过或测试 HTTP 200 当真实发布、安装 |
+| V-03 | 多团队资产隔离与集中配置 | 获准测试 IdP 的独立 Web/Backend OIDC 登录、可信 Backend 地址/环境分发及短期会话可验；两台以上 Desktop 安装同一 Workbench 的包与面板功能另验，若面板声明个性化数据或代发成员请求，再分别验目标 Host 安全回程/会话代理，未通过则该面板路径阻断，不阻断 Web/Backend 的 T07 验收；普通用户仅见本人有权空间、不逐机填 Provider 共享凭据；team/asset-space/Git/WeKnora/ACL/session/审计互相隔离；管理员子页可按权限做配置草案→连接检查→激活/停用，版本并发、密钥轮换/不回显、旧操作对账和失败回滚可验证；如选 TeamAI，卡片仅允许绑定获批仓库/target、pull 模式及逐设备 init/授权状态，不把配置通过或测试 HTTP 200 当真实发布、安装 |
 | V-04 | 知识目录与索引映射 | domain/topic/path preview、空间内唯一 canonical key、稳定 asset ID、Git↔WeKnora 多版本/旧 document ID 映射可验证；新增/修订冲突、显式 tombstone 退役、移动/重命名旧路径残留及旧索引不可见性分别有正负向证据，不把 Git path 删除当已下架 |
 | V-05 | 会话隔离与生命周期 | 多会话可并行；暂停、恢复、归档、分叉、只读可用且上下文不串线；暂停后由首页/待办返回原阶段、草稿和证据，归档/只读展示原因和恢复或新建路径 |
 | V-06 | 草稿与并发 | session/draft/revision 可追踪；同 base revision 并发提交触发冲突和人工合并 |
@@ -322,7 +322,7 @@ P4 的 Plugin 不再采用“最后一次性集成”方式。详细的适用能
 | V-14 | 非程序员体验 | 不操作 Git 可创建、确认、审核和发布；第一用户在预览中辨认来源/推断及版本差异，审核退回后能按意见在原会话修订；发布排队、失败或 unknown 时知道责任人、已验证到哪一步及下一步，不会误以为已生效 |
 | V-15 | 交接协议 | 下游 target、version、digest 和依赖可追踪 |
 | V-16 | 反馈分流与 Badcase | 无运行事件也可报告最小疑点，独立 Feedback Candidate 能受理、确认、去重、分流、补证、关闭、回访并按受影响调用数/覆盖率统计；用户从带来源的回答或资产详情反馈缺失/错误/过期，能看责任人/指派、核验和处理状态；知识、Skill、分发、平台或业务流程问题进入正确路径，误报、无运行引用或无人认领均有回执，反馈不直接改正式资产，也不强制创建 Creation Session；仅正式修订决定和服务端授权后关联新会话 |
-| V-17 | 身份与责任链 | DSH principal、team/role ACL、Git service identity、approved_by/released_by/executed_by 和跨团队拒绝可审计 |
+| V-17 | 身份与责任链 | 已验证的 Workbench OIDC `(issuer,sub)`→`principal_id`、当前 team/role ACL、Git service identity、approved_by/released_by/executed_by 和跨团队拒绝可审计 |
 | V-18 | PostgreSQL 控制面 | migration、事务/乐观锁、幂等、备份恢复、Worker 重启和数据库故障的 unknown/degraded 状态可验证 |
 | V-19 | 安全审计 | 无 secret 泄露、越权和不可追踪写入 |
 | V-20 | 故障恢复 | provider 半成功、超时、丢 event、重复/乱序、迟到旧 callback、索引孤儿/旧版残留、撤权竞态均能用 Git/PG/WeKnora 持久对账发现；原目标先读回再补偿，权限收紧即时阻断受控入口，外部不可阻断则安全升级而非报告成功；人工接管、告警和恢复游标有证据 |
@@ -351,6 +351,8 @@ P4 的 Plugin 不再采用“最后一次性集成”方式。详细的适用能
 | V-41 | 历史原文外部阅读（阶段 2 Spike、阶段 5/6 回归；R-08） | Workbench 只管理有权来源的最小定位、固定版本、核证锚点与处理状态，不提供持久全文/默认原件归档或独立来源全文索引。分别以获准脱敏来源和正式知识版验证：仅 WeKnora 确有独立来源 document ID/version、目标文档级 ACL 与真实深链时显示外部「在 WeKnora 阅读」，跳转后目标重新鉴权；知识版链接不冒充来源原件。无来源文档、映射失效、旧版、撤权、跨空间与无权负例不渲染虚假入口，转有权原系统定位或人工核对。目标缺安全深链时标 `pending`，不宣称原文已接入；创作时授权临时核对与材料解析门仍按 V-38 验收。 |
 
 | V-42 | Inbox 留链接与知识入口受限抓取（阶段 2 Spike、阶段 5 按声明范围验收；R-09） | 用脱敏非生产链接验证 Inbox 保存、回访、导航零抓取/解析且不产生团队候选；知识入口用户明确选用链接、当前主体/来源/用途/目标空间获准且来源连接器与解析能力通过目标验证时才临时抓取固定版本，返回覆盖/未读/拒绝的可核回执，不自动受理团队候选、建 Session/Draft、长期保存原件或索引。另经明示授权的团队候选受理独立按 V-37/T27 取证，受限抓取回执本身不是分享许可。以无权/撤权、跨空间、越界来源、重定向每跳、DNS 重绑定、私网/元数据目的地、文件超限、伪装类型、恶意/损坏解析内容及超时为负例，核授权/allowlist/实际连接地址、字节与类型限制、扫描/隔离、最小拒绝审计与无外传；失败只保留有权定位，正式知识候选仍过 V-38 的固定版本/覆盖门。未获目标正负向证据时仅链接定位及获准其他材料路径可继续，不声称链接抓取能力上线，也不拿管理员连接测试或静态 HTML 替代。 |
+
+| V-43 | DSH→MCP 逐人身份与知识查询授权（T30；原生查询子项） | 固定目标 DSH/profile 和获准非生产 MCP/只读查询服务上，服务端独立核逐人证明的签发方、受众、有效期、重放及撤权，映射当前主体并逐请求核成员/空间/KB/文档/来源/版本/操作 ACL 与返回引用；A→A/B→B 正向、A→B/B→A、无/伪造/过期/错受众证明、共享 key＋自报成员、猜 ID、切号/登出/撤权、旧引用和故障负向均有脱敏读回与审计。TeamAI installed、DSH loaded、HTTP 200 或静态源码不能代替人员授权；目标逐人凭据安全保管、WeKnora MCP/只读接口或对象级 ACL 不成立时原生查询保持 `blocked/not_run`，不阻断独立 Web 授权查询或无知识查询 Skill 的固定包装载。原 WeKnora UI/直链按 V-33/V-41 独立验收。 |
 
 详细平台实验见[验证材料](../验证/README.md)。产品体验以[用户价值与指标](01-问题、用户与产品范围.md#2-用户与责任)、[日常反馈闭环](02-端到端知识工作流.md#51-日常反馈--周期复核--下次使用)、[Workbench 如何解决专家判断与维护负担](../产品/03-Workbench如何解决.md)和[工作台逐屏设计](09-工作台信息架构与核心对象.md)为设计输入；V-01、V-05、V-14、V-16、V-22、V-28–V-31 应分别附首次使用、回访、审核退回、反馈纠错、Provider `unknown`、小样本无结论、专家拒绝/补证、无人认领/转交、归因更正及反推隐私的脱敏录屏或逐步操作记录。阶段 0 先用纸面原型/脱敏 fixture 评估这些交互是否可理解，**不能将原型通过记为功能已实现**；阶段 5 实现 V-29 的 Knowledge 授权判断/修订门禁，阶段 7 扩展到 Skill；阶段 6 实现 V-30 的队列/归因更正及 V-31 的最小授权聚合与负向权限测试，低风险真实试点再观察受益者、贡献者、审核人的任务结果与负担。fixture 与产品设想均不代替真实价值验收。
 

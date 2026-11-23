@@ -121,7 +121,7 @@ Skill Draft
   → canonical protected main 经审合并（Skill 已发布）
 ```
 
-平台展示变更摘要、文件差异、测试和门禁、审核意见、commit/MR 链接以及失败原因。默认由 Workbench Git service identity 创建分支、commit 和 MR；`created_by`/`submitted_by`/`approved_by` 仍记录真实 DSH 用户及责任角色。模型不能直接 push protected `main`，也不能用 Hook 绕过审核。
+平台展示变更摘要、文件差异、测试和门禁、审核意见、commit/MR 链接以及失败原因。默认由 Workbench Git service identity 创建分支、commit 和 MR；`created_by`/`submitted_by`/`approved_by` 仍记录经 Workbench OIDC 验证的真实责任人及当前团队角色。模型不能直接 push protected `main`，也不能用 Hook 绕过审核。
 
 ## 7. 从固定 Git 版本打包、候选 SkillHub 发布与下游交接
 

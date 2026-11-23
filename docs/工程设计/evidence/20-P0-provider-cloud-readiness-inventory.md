@@ -14,6 +14,13 @@
 | TeamAI / TeamLab | 未提供固定目标制品、环境或 owner；默认不在本期正式目标分发路径。 | 若以后显式纳入，另定目标版本、环境、责任人、安装/撤回与 digest 读回。 | `readiness_only/non_blocking`；不将其缺失冒充本期已接通，也不擅自增加本期硬门禁。 |
 | 腾讯云非生产 Workbench | 用户在轻量应用服务器上读回独立的 PostgreSQL 16.15 测试容器，无外部端口映射，合成数据的真实 `pg.Pool` 事务验证 4/4，详见 [19](./19-P0-isolated-cloud-pg16-application-transaction-readback.md)。测试角色及临时 schema 已清理；测试归档条件删除命令回显成功；测试用 Node 镜像的后续生命周期尚未核对/处理。 | 后端/Worker/对象存储制品及部署 owner、网络/TLS/密钥、备份恢复/监控/回滚路线；隔离 PG 的本地连接未验证密码认证。服务器管理入口的网络访问范围尚未收窄。 | 有限的 PG 可行性证据，不等于 Workbench 云部署或 P0-17 通过。优先收窄管理入口并规划凭据/网络边界，所有服务器变更单独确认；不复用其他测试应用的 PG。 |
 
+### 2026-11-04 补记：A/B 测试资源准入仍待核
+
+- 上表 Git 行的“目标仓库未给出”是原盘点时的状态；现用户已提供 A/B 两个测试仓库及相应的两个 WeKnora 空间 ID 候选，暂按两个 Workbench 团队各一个资产空间准备。具体映射只记录于本机 Git 忽略的 `docs/工程设计/deployment.local.md`；真实团队归属、资源 Owner 与只读授权尚未确认，也未在服务器 PG 登记或激活连接。
+- 本轮只读尝试中，两个 GitHub 仓库的公共元数据请求均返回 HTTP 403，稳定 repository ID、默认分支及 `main` 保护策略仍为 `unknown`；这不证明仓库不存在或分支未受保护。非交互 SSH 认证失败，服务器命令未执行，WeKnora 本轮运行状态为 `not_run`；上表 `v0.8.3` 就绪观察仅为此前用户回传，不能替代本轮采样。本地可用资料未提供可核实的目标版本只读空间元数据接口、响应及权限语义；不能据此断言接口不存在，更不能确认两个候选空间的存在性、归属、ACL 或 Workbench 连接。
+- 下一次只读验收须先由资源 Owner 确认 A/B 归属、目标环境和授权方式，再取得 Git 稳定 ID、默认分支、预期 `refs/heads/main` 的保护与只读权限，以及目标 WeKnora 版本受支持的空间元数据契约、只读服务身份和空间/对象 ACL。获准后分别取得 A→A、B→B 成功及交叉访问、伪造 ID、撤权后拒绝的脱敏读回，分开注明环境、版本、时间、Owner 与复核人；缺项保持 `unknown/blocked/not_run`，不能以服务可达、文档说明或本地 fake 测试代替。
+- 停点：不重试受阻的访问，不获取凭据、不迁移或登记服务器 PG、不增加真实 Provider 调用或业务路由、不执行真实团队资产写入。当前资源绑定仅有 `pending|disabled`，内部授权回归不证明可信 DSH 身份或 Provider ACL；不得提升为 `real_verified`。
+
 ## 阶段与决定
 
 - P0 记录版本、环境、能力边界、owner、阻塞、fallback 与 rollback 路径；未知即保持 `pending`，不为了填矩阵创造 owner 或制品。P1 的 Knowledge-first 纵向切片、P2 的可信身份/Worker 恢复、P3 的真实 Knowledge 发布链均不作为本盘点的 P0 实施任务。
