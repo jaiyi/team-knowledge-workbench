@@ -55,7 +55,12 @@ const loadHost = async (config: Record<string, unknown>, withConnection = true) 
     if (!route || !activeRoutes.has(route.path) || !route.methods.includes(method)) return undefined;
     return route.fetch(new Request('http://localhost/api/team-knowledge-workbench.health', { method }));
   };
-  return { registrations, effects, routes, requestStatus };
+  const requestIdentityStatus = async (request = new Request('http://localhost/api/team-knowledge-workbench.identity-status')) => {
+    const route = routes.find((item) => item.path === '/api/team-knowledge-workbench.identity-status');
+    if (!route || !activeRoutes.has(route.path) || !route.methods.includes(request.method)) return undefined;
+    return route.fetch(request);
+  };
+  return { registrations, effects, routes, requestStatus, requestIdentityStatus };
 };
 
 describe('Workbench package fixture', () => {
@@ -194,13 +199,12 @@ describe('Workbench package fixture', () => {
     expect(registrations).toHaveLength(1);
   });
 
-  it('registers only a read-only Connection-owned status route and rejects absent connection', async () => {
+  it('keeps the Connection health route read-only and rejects absent connection', async () => {
     const loaded = await loadHost({});
     const route = loaded.routes[0];
     expect(route).toMatchObject({
       path: '/api/team-knowledge-workbench.health', methods: ['GET'], requestBody: 'buffered',
     });
-    expect(loaded.routes).toHaveLength(1);
     expect(route?.methods).not.toContain('POST');
     await expect(loaded.requestStatus('POST')).resolves.toBeUndefined();
     const response = await loaded.requestStatus();
@@ -209,6 +213,43 @@ describe('Workbench package fixture', () => {
     expect(await response?.json()).toEqual({ status: 'unknown', reference: 'api-not-configured' });
     expect(loaded.registrations).toHaveLength(1);
     await expect(loadHost({}, false)).rejects.toThrow('DSH host requires Connection fetch service');
+  });
+
+  it('registers a separate, fixed blocked identity diagnostic without accepting caller identity', async () => {
+    const api = createApiServer();
+    const loaded = await loadHost({ backendEndpoint: await listen(api) });
+    expect(loaded.routes.map(({ path }) => path)).toEqual([
+      '/api/team-knowledge-workbench.health', '/api/team-knowledge-workbench.identity-status',
+    ]);
+    expect(loaded.routes[1]).toMatchObject({
+      path: '/api/team-knowledge-workbench.identity-status', methods: ['GET'], requestBody: 'buffered',
+    });
+    const health = await loaded.requestStatus();
+    expect(await health?.json()).toEqual({ status: 'ok', reference: 'api-health-reachable' });
+    const network = vi.spyOn(globalThis, 'fetch');
+    try {
+      for (const request of [
+        new Request('http://localhost/api/team-knowledge-workbench.identity-status'),
+        new Request('http://localhost/api/team-knowledge-workbench.identity-status?principalId=forged', {
+          headers: { authorization: 'Bearer forged', cookie: 'session=forged', 'x-actor-id': 'forged' },
+        }),
+      ]) {
+        const response = await loaded.requestIdentityStatus(request);
+        expect(response?.status).toBe(503);
+        expect(response?.headers.get('content-type')).toBe('application/json');
+        expect(response?.headers.get('cache-control')).toBe('no-store');
+        expect(await response?.json()).toEqual({ status: 'blocked', reference: 'host-identity-not-wired' });
+      }
+      expect(network).not.toHaveBeenCalled();
+    } finally {
+      network.mockRestore();
+    }
+    await expect(loaded.requestIdentityStatus(new Request(
+      'http://localhost/api/team-knowledge-workbench.identity-status', { method: 'POST' },
+    ))).resolves.toBeUndefined();
+    for (const effect of loaded.effects) effect()();
+    await expect(loaded.requestIdentityStatus()).resolves.toBeUndefined();
+    await expect(loaded.requestStatus()).resolves.toBeUndefined();
   });
 
   it('reads redacted status via the route through disconnect, recovery and unload', async () => {
@@ -375,7 +416,7 @@ describe('Workbench package fixture', () => {
     expect(client).not.toContain('desktopWorkbenches.register');
   });
 
-  it('shows the browser login button only when configured and opens without sending a request', () => {
+  it('shows an optional token-free Workbench Web login entry that only opens the system browser', () => {
     const sourceCommit = '0123456789abcdef0123456789abcdef01234567';
     const webLoginUrl = 'https://login.example.org/auth';
     const render = (configured: boolean) => {
@@ -421,6 +462,7 @@ describe('Workbench package fixture', () => {
     expect(link).toBeDefined();
     expect(link?.props.type).toBe('button');
     expect(link?.props['aria-label']).toBe('在浏览器打开 Workbench 登录');
+    expect(configured.client).not.toContain('api/team-knowledge-workbench.identity-status');
     expect(configured.fetch).not.toHaveBeenCalled();
     (link?.props.onClick as () => void)();
     expect(configured.open).toHaveBeenCalledExactlyOnceWith(webLoginUrl, '_blank', 'noopener,noreferrer');

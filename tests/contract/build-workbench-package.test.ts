@@ -70,7 +70,7 @@ describe('Workbench artifact source provenance', () => {
     expect(() => parseBackendEndpoint(['http://127.0.0.1:3030'])).toThrow();
   });
 
-  it('passes an optional Web login URL separately from the backend endpoint', () => {
+  it('passes an optional Workbench Web login URL independently from the backend endpoint', () => {
     const auth = 'https://login.example.org/auth';
     const backend = 'http://127.0.0.1:3030';
     expect(parsePackageOptions([])).toEqual({});

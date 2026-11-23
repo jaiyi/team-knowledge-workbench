@@ -10,9 +10,14 @@ type Element = { tag: string | ((props: Record<string, unknown>) => Element); pr
 
 function mountStage() {
   const client = buildWorkbenchPackageInput({ sourceCommit }).files.find((file) => file.path === 'client/index.js')?.content ?? '';
-  const hooks: unknown[] = [];
+  const hooks = new Map<string, unknown[]>();
   const cleanups: Array<() => void> = [];
   let cursor = 0;
+  let active = 'panel';
+  const state = () => {
+    if (!hooks.has(active)) hooks.set(active, []);
+    return hooks.get(active)!;
+  };
   let main: (() => Element) | undefined;
   const sessions = { create: vi.fn(), retain: vi.fn() };
   const requests = vi.fn();
@@ -21,19 +26,22 @@ function mountStage() {
       { tag, props: props ?? {}, children }
     ),
     useState: (initial: unknown) => {
+      const values = state();
       const index = cursor++;
-      if (!(index in hooks)) hooks[index] = initial;
-      return [hooks[index], (next: unknown) => { hooks[index] = next; }];
+      if (!(index in values)) values[index] = initial;
+      return [values[index], (next: unknown) => { values[index] = next; }];
     },
     useRef: (initial: unknown) => {
+      const values = state();
       const index = cursor++;
-      if (!(index in hooks)) hooks[index] = { current: initial };
-      return hooks[index];
+      if (!(index in values)) values[index] = { current: initial };
+      return values[index];
     },
     useEffect: (effect: () => (() => void) | void) => {
+      const values = state();
       const index = cursor++;
-      if (!(index in hooks)) {
-        hooks[index] = true;
+      if (!(index in values)) {
+        values[index] = true;
         const cleanup = effect();
         if (cleanup) cleanups.push(cleanup);
       }
@@ -62,6 +70,7 @@ function mountStage() {
     },
   });
   const renderPanel = () => {
+    active = 'panel';
     cursor = 0;
     const root = main?.();
     if (!root) throw new Error('missing main panel');
@@ -71,10 +80,36 @@ function mountStage() {
     const root = renderPanel();
     const sheet = root.children.find((child): child is Element => typeof child !== 'string' && child !== null && child.tag === 'div');
     const workspace = sheet?.children.find((child): child is Element => typeof child !== 'string' && child !== null && child.tag === 'div');
-    const content = workspace?.children.find((child): child is Element => typeof child !== 'string' && child !== null && child.tag === 'div');
-    const stage = content?.children.find((child): child is Element => typeof child !== 'string' && child !== null && typeof child.tag === 'function' && child.tag.name === 'SyntheticStage');
-    if (!stage || typeof stage.tag !== 'function') throw new Error('missing synthetic stage');
+    const content = workspace?.children.find((child): child is Element => typeof child !== 'string' && child !== null && child.props.className === 'tkw-content');
+    const visible = content?.children.find((child): child is Element => typeof child !== 'string' && child !== null && child.props.hidden === false);
+    const stage = visible?.children.find((child): child is Element => typeof child !== 'string' && child !== null && typeof child.tag === 'function');
+    if (!stage || typeof stage.tag !== 'function') throw new Error('missing workbench page');
+    for (const section of content?.children ?? []) {
+      if (typeof section === 'string' || section === null) continue;
+      const component = section.children.find((child): child is Element => typeof child !== 'string' && child !== null && typeof child.tag === 'function');
+      if (!component || typeof component.tag !== 'function' || component.tag.name === stage.tag.name) continue;
+      if (!hooks.has(component.tag.name)) {
+        active = component.tag.name;
+        cursor = 0;
+        component.tag(component.props);
+      }
+    }
+    active = stage.tag.name;
+    cursor = 0;
     return stage.tag(stage.props);
+  };
+  const findPanel = (tag: string, label: string): Element => {
+    const visit = (node: Element | string): Element | undefined => {
+      if (node === null || typeof node === 'string') return undefined;
+      if (node.tag === tag && (node.props['aria-label'] === label || node.children.includes(label))) return node;
+      for (const child of node.children) {
+        const match = visit(child);
+        if (match) return match;
+      }
+    };
+    const match = visit(renderPanel());
+    if (!match) throw new Error(`missing panel ${tag}: ${label}`);
+    return match;
   };
   const find = (tag: string, label: string): Element => {
     const visit = (node: Element | string): Element | undefined => {
@@ -100,8 +135,133 @@ function mountStage() {
   };
   const click = (label: string) => (find('button', label).props.onClick as () => void)();
   const choose = (value: string) => (find('select', '模拟情境').props.onChange as (event: { target: { value: string } }) => void)({ target: { value } });
-  return { client, render, renderPanel, find, findTag, click, choose, sessions, requests, cleanups };
+  return { client, render, renderPanel, find, findPanel, findTag, click, choose, sessions, requests, cleanups };
 }
+
+describe('installed Client local Workbench home', () => {
+  it('keeps the prototype Workbench entries in a compact top row', () => {
+    const prototype = readFileSync(new URL('../../docs/产品/可视化原型/index.html', import.meta.url), 'utf8');
+    const navigation = /<nav class="nav" aria-label="Workbench 五个入口">(.*?)<\/nav>/.exec(prototype)?.[1];
+    expect(navigation?.match(/<button data-route="[^"]+"[^>]*>[^<]*<\/button>/g)).toEqual([
+      expect.stringContaining('aria-label="我的工作台">我的</button>'),
+      expect.stringContaining('aria-label="提炼知识&amp;经验">知识</button>'),
+      expect.stringContaining('aria-label="打磨可复用的技能">技能</button>'),
+      expect.stringContaining('aria-label="连接业务数据源">工具</button>'),
+      expect.stringContaining('aria-label="团队业务资产大盘">大盘</button>'),
+    ]);
+    expect(prototype).toContain('.nav-group.workbench .nav { display:flex; overflow-x:auto; flex:1; min-width:0; }');
+    expect(prototype).toContain('.nav-group.workbench { flex-basis:100%; flex-wrap:wrap; gap:4px; }');
+    expect(prototype).toContain('团队知识复利工作台</strong><nav class="nav"');
+    expect(prototype).toContain('.nav-group.workbench .nav button.active { box-shadow:none; border-bottom-color:#176859; background:transparent; color:#176859; }');
+    expect(prototype).toContain('.app { display:block; background:#f1f5f2; }');
+  });
+
+  it('keeps a short fictional Inbox clue in page memory, navigates only to a pending reminder, and clears on remount', () => {
+    const stage = mountStage();
+    (stage.findPanel('button', '我的工作台').props.onClick as () => void)();
+    expect(stage.findPanel('button', '我的工作台').props['aria-current']).toBe('page');
+    expect(stage.findPanel('button', '我的工作台').children).toEqual(['我的']);
+    expect(stage.findPanel('button', '提炼知识&经验').props.disabled).toBe(false);
+    for (const name of ['打磨可复用的技能', '连接业务数据源', '团队业务资产大盘']) {
+      expect(stage.findPanel('button', name).props.disabled).toBe(true);
+    }
+    expect(JSON.stringify(stage.render())).toContain('仅本页暂存');
+    const homeLayout = stage.find('div', '本页首页布局');
+    expect(homeLayout.props.style).toMatchObject({ display: 'grid', gridTemplateColumns: 'repeat(12, minmax(0, 1fr))' });
+    expect(homeLayout.children.filter((child): child is Element => typeof child !== 'string' && child !== null)
+      .map((child) => child.props['aria-label'])).toEqual(['个人 Inbox 本页演练', '使用与反馈概览', '最近使用情景示例', '我的反馈进展']);
+    expect(stage.find('section', '个人 Inbox 本页演练').props.style).toHaveProperty('gridColumn', '1 / -1');
+    expect(stage.find('section', '最近使用情景示例').props.style).toHaveProperty('gridColumn', 'span 8');
+    const styles = stage.findTag(stage.renderPanel(), 'style')?.children[0];
+    expect(styles).toContain('.tkw-home-lower { grid-column: 1 / -1 !important; }');
+    expect(styles).toContain('.tkw-inbox-layout { grid-template-columns: minmax(0, 1fr) !important; }');
+    expect(styles).toContain('.tkw-usage-summary { grid-template-columns: minmax(0, 1fr) !important; }');
+    expect(JSON.stringify(stage.render())).toContain('知识 · 暂无可计算数据');
+    expect(JSON.stringify(stage.render())).toContain('Skill · 暂无可计算数据');
+    expect(JSON.stringify(stage.render())).not.toContain('最近使用 · 固定情景');
+    expect(stage.find('button', '查看本页线索').props.disabled).toBe(true);
+    expect(JSON.stringify(stage.render())).toContain('仅填虚构／脱敏短线索');
+    expect(stage.find('input', '虚构线索标题').props.maxLength).toBe(60);
+    expect(stage.find('textarea', '虚构下一步提示').props.maxLength).toBe(280);
+    expect(stage.find('button', '暂存本页演练线索').props.disabled).toBe(true);
+    (stage.find('input', '虚构线索标题').props.onChange as (event: { target: { value: string } }) => void)({ target: { value: '  ' } });
+    expect(stage.find('button', '暂存本页演练线索').props.disabled).toBe(true);
+    (stage.find('input', '虚构线索标题').props.onChange as (event: { target: { value: string } }) => void)({ target: { value: '虚构周会 · 版本待核'.repeat(10) } });
+    expect((stage.find('input', '虚构线索标题').props.value as string).length).toBe(60);
+    stage.click('填入虚构示例');
+    (stage.find('input', '虚构线索标题').props.onChange as (event: { target: { value: string } }) => void)({ target: { value: '  虚构周会 · 版本待核  ' } });
+    (stage.find('textarea', '虚构下一步提示').props.onChange as (event: { target: { value: string } }) => void)({ target: { value: '稍后核对虚构版本'.repeat(40) } });
+    expect((stage.find('textarea', '虚构下一步提示').props.value as string).length).toBe(280);
+    (stage.find('textarea', '虚构下一步提示').props.onChange as (event: { target: { value: string } }) => void)({ target: { value: '  虚构演练：先核版本  ' } });
+    stage.click('暂存本页演练线索');
+    expect(JSON.stringify(stage.render())).toContain('虚构周会 · 版本待核');
+    expect(stage.find('button', '暂存本页演练线索').props.disabled).toBe(true);
+    stage.click('查看本页线索');
+    expect(JSON.stringify(stage.render())).toContain('虚构演练：先核版本');
+    stage.click('到材料页核对（不提交）');
+    const material = JSON.stringify(stage.render());
+    expect(material).toContain('采购协同周报 · 来源全文');
+    expect(material).toContain('来自本页 Inbox 的待核提醒 · 虚构周会 · 版本待核');
+    expect(material).toContain('下面仍是独立的虚构周报样本');
+    expect(material).not.toContain('虚构演练：先核版本');
+    (stage.findPanel('button', '我的工作台').props.onClick as () => void)();
+    stage.click('移除本页线索');
+    (stage.findPanel('button', '提炼知识&经验').props.onClick as () => void)();
+    expect(JSON.stringify(stage.render())).not.toContain('来自本页 Inbox 的待核提醒');
+    (stage.findPanel('button', '我的工作台').props.onClick as () => void)();
+    expect(stage.find('button', '查看本页线索').props.disabled).toBe(true);
+    const remounted = mountStage();
+    (remounted.findPanel('button', '我的工作台').props.onClick as () => void)();
+    expect(remounted.find('button', '查看本页线索').props.disabled).toBe(true);
+    expect(stage.sessions.create).not.toHaveBeenCalled();
+    expect(stage.requests.mock.calls.every(([path]) => path === 'api/team-knowledge-workbench.health')).toBe(true);
+    stage.cleanups.forEach((cleanup) => cleanup());
+    remounted.cleanups.forEach((cleanup) => cleanup());
+  });
+
+  it('records a standalone eventless opinion only in this page, never a receipt or asset change', () => {
+    const stage = mountStage();
+    (stage.findPanel('button', '我的工作台').props.onClick as () => void)();
+    expect(JSON.stringify(stage.render())).not.toContain('一次没找到依据的任务。无消费事件');
+    expect(stage.find('section', '最近使用情景示例').children.length).toBeGreaterThan(2);
+    stage.click('报告未关联使用的问题');
+    expect(JSON.stringify(stage.render())).toContain('无消费事件或资产版本也可报告');
+    expect(stage.find('button', '记录本页演练意见').props.disabled).toBe(true);
+    (stage.find('select', '独立疑点类别').props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'unknown' } });
+    stage.click('记录本页演练意见');
+    expect(stage.find('section', '独立疑点本页演练').props['aria-label']).toBe('独立疑点本页演练');
+    (stage.find('select', '独立疑点类别').props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'missing' } });
+    (stage.find('textarea', '脱敏演练说明').props.onChange as (event: { target: { value: string } }) => void)({ target: { value: '虚构情景中的依据待核' } });
+    stage.click('记录本页演练意见');
+    expect(JSON.stringify(stage.render())).toContain('虚构情景中的依据待核');
+    expect(JSON.stringify(stage.render())).toContain('未提交服务端、未核实或分派');
+    stage.click('查看虚构知识情景');
+    expect(JSON.stringify(stage.render())).toContain('固定虚构使用情景 · 版本与业务结果未知');
+    expect(JSON.stringify(stage.render())).toContain('是否返回正确、有权且适用的版本：未知');
+    expect(JSON.stringify(stage.render())).not.toContain('DEMO-K-01');
+    stage.click('返回情景列表');
+    stage.click('查看虚构 Skill 情景');
+    expect(JSON.stringify(stage.render())).toContain('是否实际加载或执行、结果如何：未知');
+    stage.click('返回情景列表');
+    const home = JSON.stringify(stage.render());
+    expect(home).toContain('虚构情景中的依据待核');
+    expect(home).toContain('无消费事件');
+    expect(home).not.toContain('feedback_');
+    expect(home).not.toContain('已受理');
+    expect(home).not.toContain('已分派');
+    expect(stage.sessions.create).not.toHaveBeenCalled();
+    expect(stage.requests.mock.calls.every(([path]) => path === 'api/team-knowledge-workbench.health')).toBe(true);
+    (stage.findPanel('button', '提炼知识&经验').props.onClick as () => void)();
+    expect(JSON.stringify(stage.render())).toContain('采购协同周报 · 来源全文');
+    (stage.findPanel('button', '我的工作台').props.onClick as () => void)();
+    expect(JSON.stringify(stage.render())).toContain('虚构情景中的依据待核');
+    const remounted = mountStage();
+    (remounted.findPanel('button', '我的工作台').props.onClick as () => void)();
+    expect(JSON.stringify(remounted.render())).not.toContain('虚构情景中的依据待核');
+    remounted.cleanups.forEach((cleanup) => cleanup());
+    stage.cleanups.forEach((cleanup) => cleanup());
+  });
+});
 
 describe('installed Client synthetic material stage', () => {
   it('presents the limited material path with the prototype hierarchy, not an unlocked knowledge workflow', () => {
@@ -113,10 +273,11 @@ describe('installed Client synthetic material stage', () => {
     expect(page.props.style).not.toHaveProperty('minHeight', '100vh');
     expect(page.props.style).toHaveProperty('containerType', 'inline-size');
     const localStyle = stage.findTag(page, 'style');
-    expect(localStyle?.children[0]).toContain('grid-template-columns: 232px minmax(0, 1fr)');
+    expect(localStyle?.children[0]).toContain('.tkw-workspace { display: block !important; }');
+    expect(localStyle?.children[0]).toContain('.tkw-navigation { display: flex; overflow-x: auto;');
     expect(localStyle?.children[0]).toContain('@container (max-width: 760px)');
     expect(localStyle?.children[0]).toContain('grid-template-columns: minmax(0, 1fr)');
-    expect(localStyle?.children[0]).toContain('.tkw-navigation { position: static !important;');
+    expect(localStyle?.children[0]).not.toContain('.tkw-navigation { position: static !important;');
     expect(localStyle?.children[0]).toContain('.tkw-step-navigation { grid-template-columns: repeat(2, minmax(0, 1fr)) !important;');
     expect(localStyle?.children[0]).toContain('.tkw-step-navigation button:last-child { grid-column: 1 / -1; }');
     expect(localStyle?.children[0]).toContain('.tkw-fact-reading { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }');
@@ -177,26 +338,28 @@ describe('installed Client synthetic material stage', () => {
     expect(stage.find('button', '2 · 锚点核对').props.disabled).not.toBe(true);
     const workspace = sheet?.children.find((child): child is Element => typeof child !== 'string' && child !== null && child.tag === 'div');
     expect(workspace?.props.className).toBe('tkw-workspace');
-    const navigation = stage.findTag(workspace ?? '', 'nav');
+    const heading = workspace?.children[0] as Element;
+    expect(heading.props.className).toBe('tkw-topbar');
+    expect(heading.children[0]).toMatchObject({ tag: 'strong', children: ['团队知识复利工作台'] });
+    const navigation = heading.children[1] as Element;
     expect(navigation?.props['aria-label']).toBe('Workbench 五个并列入口');
-    expect(workspace?.children[0]).toBe(navigation);
     expect(navigation?.props.className).toBe('tkw-navigation');
-    expect(navigation?.props.style).toMatchObject({ position: 'sticky', alignSelf: 'start', overflowY: 'auto', maxHeight: expect.stringContaining('100') });
-    expect(navigation?.children[0]).toMatchObject({ tag: 'div', children: [
-      { tag: 'strong', props: {}, children: ['Team Knowledge Workbench'] },
-      { tag: 'small', props: {}, children: ['团队知识复利工作台'] },
-    ] });
-    expect(navigation?.children).toHaveLength(6);
-    const entries = navigation?.children.slice(1) as Element[];
-    expect(entries.map((entry) => entry.children[0])).toEqual([
+    expect(navigation?.props.style).toMatchObject({ display: 'flex', overflowX: 'auto' });
+    expect(navigation?.children).toHaveLength(5);
+    const entries = navigation?.children as Element[];
+    expect(entries.map((entry) => entry.children[0])).toEqual(['我的', '知识', '技能', '工具', '大盘']);
+    expect(entries.map((entry) => entry.props['aria-label'])).toEqual([
       '我的工作台', '提炼知识&经验', '打磨可复用的技能', '连接业务数据源', '团队业务资产大盘',
     ]);
-    expect(entries[1]?.props).toMatchObject({ 'aria-current': 'page', disabled: false });
-    expect(entries[1]?.children[1]).toMatchObject({ tag: 'small', children: ['当前入口'] });
-    for (const entry of entries.filter((_, index) => index !== 1)) {
+    expect(entries[0]?.props).toMatchObject({ disabled: false });
+    expect(entries[1]?.props).toMatchObject({ 'aria-current': 'page', disabled: false, style: { borderBottom: '2px solid #176859', background: 'transparent', color: '#176859' } });
+    expect(entries[1]?.props.style).not.toHaveProperty('boxShadow');
+    expect(entries[0]?.props.style).toMatchObject({ borderBottom: '2px solid transparent', background: 'transparent' });
+    expect(localStyle?.children[0]).toContain('.tkw-navigation button:focus-visible { outline: 3px solid #65c9a9;');
+    expect(localStyle?.children[0]).toContain('.tkw-topbar { display: flex;');
+    for (const entry of entries.slice(2)) {
       expect(entry.props.disabled).toBe(true);
       expect(entry.props['aria-current']).toBeUndefined();
-      expect(entry.children[1]).toMatchObject({ tag: 'small', children: ['未开放'] });
       expect(entry.props.onClick).toBeUndefined();
     }
     expect(JSON.stringify(stage.renderPanel())).not.toContain('Workbench 入口状态');

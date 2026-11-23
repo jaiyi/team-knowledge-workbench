@@ -133,6 +133,15 @@ export function apply(ctx, config) {
       headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
     }),
   });
+  connection.fetch.register({
+    path: '/api/team-knowledge-workbench.identity-status',
+    methods: ['GET'],
+    requestBody: 'buffered',
+    fetch: async () => new Response(JSON.stringify({ status: 'blocked', reference: 'host-identity-not-wired' }), {
+      status: 503,
+      headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    }),
+  });
   const registration = Object.freeze({
     kind: 'workbench',
     identity,
@@ -433,7 +442,7 @@ const buildClientEntry = (webLoginUrl?: string): string => {
       return nodes;
     }
 
-    function SyntheticStage() {
+    function SyntheticStage({ pendingLocator }) {
       const [step, setStep] = React.useState('source');
       const [material, setMaterial] = React.useState('report');
       const [localDocument, setLocalDocument] = React.useState(null);
@@ -564,6 +573,8 @@ const buildClientEntry = (webLoginUrl?: string): string => {
         React.createElement('header', { style: { marginBottom: 17 } },
           React.createElement('h1', { style: { fontSize: 24, lineHeight: 1.35, margin: '0 0 6px', overflowWrap: 'anywhere' } }, '从真实过程里提炼可核对的依据'),
           React.createElement('p', { style: { color: '#42544a', fontSize: 14, margin: 0 } }, '尊重原始语境，把有权使用的过程材料中的事实、判断和适用边界整理成他人能正确使用的依据；不预设必须新建知识。')),
+        pendingLocator ? React.createElement('p', { role: 'status', style: { padding: 12, background: '#faf1dd', color: '#754d16', overflowWrap: 'anywhere' } },
+          '来自本页 Inbox 的待核提醒 · ' + pendingLocator + '；未核来源权限，下面仍是独立的虚构周报样本；不导入、不提交或创建草稿。') : null,
         React.createElement('nav', { 'aria-label': '材料整理路径', className: 'tkw-step-navigation', style: { ...card, display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 8 } },
           React.createElement('button', { style: { ...button, minWidth: 0, background: step === 'source' ? '#eaf1eb' : '#fff' },
             'aria-current': step === 'source' ? 'step' : undefined, onClick: () => selectStep('source') }, '1 · 导入来源'),
@@ -719,9 +730,132 @@ const buildClientEntry = (webLoginUrl?: string): string => {
       );
     }
 
+    function LocalWorkbenchHome({ openMaterial, clearLocator }) {
+      const [saved, setSaved] = React.useState(null);
+      const [title, setTitle] = React.useState('');
+      const [hint, setHint] = React.useState('');
+      const [selected, setSelected] = React.useState(false);
+      const [category, setCategory] = React.useState('');
+      const [note, setNote] = React.useState('');
+      const [opinions, setOpinions] = React.useState([]);
+      const [selectedUsage, setSelectedUsage] = React.useState('');
+      const card = { background: '#fff', border: '1px solid #e4ebe6', borderRadius: 8, padding: '19px 20px', minWidth: 0 };
+      const muted = { color: '#52615b', fontSize: 13, lineHeight: 1.6 };
+      const button = { padding: '9px 12px', borderRadius: 6, border: '1px solid #cbd8d0', background: '#fff', color: '#245b43' };
+      const usage = [
+        ['knowledge', '知识 · 清单适用判断', '是否返回正确、有权且适用的版本：未知'],
+        ['skill', 'Skill · 例行资料核对', '是否实际加载或执行、结果如何：未知'],
+      ];
+      const categories = [
+        ['missing', '没找到相关内容'], ['version', '版本或条件待核'],
+        ['skill', 'Skill 执行异常'], ['permission', '权限或分发问题'],
+        ['unhelpful', '有结果却没帮助'], ['other', '暂无法归因'],
+      ];
+      const activeUsage = usage.find(([id]) => id === selectedUsage);
+      return React.createElement('section', { style: { color: '#202d29', lineHeight: 1.55 } },
+        React.createElement('header', { style: { marginBottom: 17 } },
+          React.createElement('h1', { style: { fontSize: 24, margin: '0 0 6px' } }, '我的工作台'),
+          React.createElement('p', { style: { ...muted, margin: 0 } }, '忙时先暂存待整理的线索；空闲后回看使用情景和反馈。暂存不自动共享或创作。')),
+        React.createElement('div', { style: { ...card, background: '#faf1dd', marginBottom: 14, padding: '10px 14px' } },
+          React.createElement('strong', null, '仅本页暂存 · 非真实保存或受理'),
+          React.createElement('p', { style: { ...muted, margin: '5px 0 0' } }, '刷新即消失；没有服务端身份、来源授权或持久化回执。请勿输入真实资料、Prompt、Trace 或 Tool 参数。')),
+        React.createElement('div', { 'aria-label': '本页首页布局', className: 'tkw-home-layout', style: { display: 'grid', gridTemplateColumns: 'repeat(12, minmax(0, 1fr))', gap: 14, alignItems: 'start' } },
+          React.createElement('section', { style: { ...card, gridColumn: '1 / -1', background: '#f3f7f3' }, 'aria-label': '个人 Inbox 本页演练' },
+            React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8 } },
+              React.createElement('div', null,
+                React.createElement('h2', { style: { margin: '0 0 4px', fontSize: 16 } }, '个人 Inbox · 稍后整理'),
+                React.createElement('p', { style: { ...muted, margin: 0 } }, '先放线索，不打断手头任务。与下面的使用反馈分开。')),
+              React.createElement('small', { style: muted }, '仅当前页面内存 · 非跨设备保存')),
+            React.createElement('div', { className: 'tkw-inbox-layout', style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)', gap: 14, marginTop: 14 } },
+              React.createElement('div', { style: { ...card, padding: 14 } },
+                React.createElement('strong', null, '我的暂存线索'),
+                React.createElement('p', { style: muted }, saved ? saved.title + ' · 1 条本页演练线索 · 未分享' : '尚无本页线索；这不代表真实 Inbox 为空。'),
+                React.createElement('button', { type: 'button', style: button, disabled: !saved,
+                  onClick: () => setSelected(true) }, '查看本页线索')),
+              React.createElement('div', { style: { ...card, padding: 14, minWidth: 0, overflowWrap: 'anywhere' } },
+                selected && saved ? React.createElement('div', { role: 'region', 'aria-label': '本页线索详情' },
+                  React.createElement('strong', null, '待核提醒 · ' + saved.title),
+                  React.createElement('p', { style: muted }, saved.hint || '没有补充提示；仅本页演练，非真实保存。'),
+                  React.createElement('p', { style: muted }, '来源授权、版本和可留存资格均未核；不带原文或真实任务深链。'),
+                  React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
+                    React.createElement('button', { type: 'button', style: button, onClick: () => openMaterial(saved.title) }, '到材料页核对（不提交）'),
+                    React.createElement('button', { type: 'button', style: button,
+                      onClick: () => { clearLocator(); setSaved(null); setSelected(false); } }, '移除本页线索'))) :
+                  React.createElement('div', null,
+                    React.createElement('strong', null, '先记下来，空闲再整理'),
+                    React.createElement('p', { style: muted }, '仅填虚构／脱敏短线索；不要输入真实资料、受限链接、Prompt、Trace 或 Tool 参数。刷新即消失。'),
+                    React.createElement('label', { style: { display: 'block', marginTop: 10 } }, '线索标题（必填）',
+                      React.createElement('input', { type: 'text', 'aria-label': '虚构线索标题', value: title, maxLength: 60,
+                        placeholder: '例如：虚构周会 · 清单适用条件待核',
+                        onChange: (event) => setTitle(event.target.value.slice(0, 60)),
+                        style: { display: 'block', boxSizing: 'border-box', width: '100%', marginTop: 5, padding: 9, border: '1px solid #cbd8d0', borderRadius: 6 } })),
+                    React.createElement('label', { style: { display: 'block', marginTop: 10 } }, '给自己的下一步提示（可选）',
+                      React.createElement('textarea', { 'aria-label': '虚构下一步提示', value: hint, rows: 2, maxLength: 280,
+                        placeholder: '例如：空闲时核虚构版本与反例',
+                        onChange: (event) => setHint(event.target.value.slice(0, 280)),
+                        style: { display: 'block', boxSizing: 'border-box', width: '100%', marginTop: 5, padding: 9, border: '1px solid #cbd8d0', borderRadius: 6 } })),
+                    React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 } },
+                      React.createElement('button', { type: 'button', style: button, disabled: !!saved || !title.trim(),
+                        onClick: () => { const value = title.trim().slice(0, 60); if (!value || saved) return; clearLocator(); setSaved({ title: value, hint: hint.trim().slice(0, 280) }); setSelected(false); setTitle(''); setHint(''); } }, '暂存本页演练线索'),
+                      React.createElement('button', { type: 'button', style: button, disabled: !!saved,
+                        onClick: () => { setTitle('虚构周会 · 清单适用条件待核'); setHint('稍后核对虚构版本与反例'); } }, '填入虚构示例')))))),
+          React.createElement('section', { style: { ...card, gridColumn: '1 / -1' }, 'aria-label': '使用与反馈概览' },
+            React.createElement('h2', { style: { margin: '0 0 5px', fontSize: 16 } }, '我的使用与反馈 · 固定虚构演练'),
+            React.createElement('p', { style: { ...muted, margin: 0 } }, '没有真实消费事件或可核的分母；情景不是本人历史，不能据此计算召回率或成功率。'),
+            React.createElement('div', { className: 'tkw-usage-summary', style: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 14, marginTop: 12, padding: '12px 0', borderTop: '1px solid #e4ebe6', borderBottom: '1px solid #e4ebe6' } },
+              React.createElement('div', null, React.createElement('strong', null, '知识 · 暂无可计算数据'),
+                React.createElement('p', { style: { ...muted, margin: '5px 0 0' } }, '返回、正确有权版、引用和适用分别待核。')),
+              React.createElement('div', null, React.createElement('strong', null, 'Skill · 暂无可计算数据'),
+                React.createElement('p', { style: { ...muted, margin: '5px 0 0' } }, '推荐、加载、执行及结果分别待核。')))),
+          React.createElement('section', { style: { ...card, gridColumn: 'span 8' }, className: 'tkw-home-lower', 'aria-label': '最近使用情景示例' },
+            React.createElement('h2', { style: { margin: '0 0 5px', fontSize: 16 } }, '最近使用 · 情景示例'),
+            React.createElement('p', { style: { ...muted, margin: '0 0 12px' } }, '仅用于浏览交互；不是本人真实使用历史。'),
+            activeUsage ? React.createElement('div', { role: 'region', 'aria-label': '固定使用情景详情' },
+              React.createElement('strong', null, '固定虚构使用情景 · 版本与业务结果未知'),
+              React.createElement('p', { style: muted }, activeUsage[2]),
+              React.createElement('button', { type: 'button', style: button, onClick: () => setSelectedUsage('') }, '返回情景列表')) :
+              React.createElement('div', null,
+                ...usage.map(([id, title, signal]) => React.createElement('div', { key: id, style: { padding: '12px 0', borderTop: '1px solid #e4ebe6', display: 'flex', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap' } },
+                  React.createElement('div', null, React.createElement('strong', null, title), React.createElement('p', { style: { ...muted, margin: '4px 0 0' } }, signal)),
+                  React.createElement('button', { type: 'button', style: button, onClick: () => setSelectedUsage(id) }, id === 'knowledge' ? '查看虚构知识情景' : '查看虚构 Skill 情景'))),
+                React.createElement('div', { style: { paddingTop: 12, borderTop: '1px solid #e4ebe6' } },
+                  React.createElement('strong', null, '没有可关联使用记录？'),
+                  React.createElement('p', { style: { ...muted, margin: '4px 0 8px' } }, '可以单独报告疑点，不推断发生过一次使用。'),
+                  React.createElement('button', { type: 'button', style: button, onClick: () => setSelectedUsage('eventless') }, '报告未关联使用的问题')))),
+          React.createElement('aside', { style: { ...card, gridColumn: 'span 4' }, className: 'tkw-home-lower', 'aria-label': '我的反馈进展' },
+            React.createElement('h2', { style: { margin: '0 0 8px', fontSize: 16 } }, '我的反馈进展 · 仅本页演练'),
+            opinions.length ? React.createElement('div', { role: 'status' },
+              ...opinions.map((opinion, index) => React.createElement('p', { key: index, style: muted },
+                '无消费事件或资产版本 · ' + categories.find(([value]) => value === opinion.category)[1] + ' · ' + (opinion.note || '无补充说明') + ' · 未提交服务端、未核实或分派')),
+              React.createElement('p', { style: muted }, '原因与分流：未知 · 正式资产变化：未知 · 下一次业务结果：未知')) :
+              React.createElement('p', { style: muted }, '尚无本页演练反馈；这不代表使用成功。')),
+          selectedUsage === 'eventless' ? React.createElement('section', { style: { ...card, gridColumn: '1 / -1' }, 'aria-label': '独立疑点本页演练' },
+            React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8 } },
+              React.createElement('h2', { style: { margin: 0, fontSize: 16 } }, '独立疑点 · 本页报告'),
+              React.createElement('button', { type: 'button', style: button, onClick: () => setSelectedUsage('') }, '返回情景列表')),
+            React.createElement('p', { style: muted }, '无消费事件或资产版本也可报告；不会上传或受理到服务端。'),
+            React.createElement('label', { style: { display: 'block', marginBottom: 10 } }, '疑点类别 ',
+              React.createElement('select', { 'aria-label': '独立疑点类别', value: category,
+                onChange: (event) => setCategory(event.target.value) },
+                React.createElement('option', { value: '' }, '请选择'),
+                ...categories.map(([value, label]) => React.createElement('option', { key: value, value }, label)))),
+            React.createElement('label', { style: { display: 'block', maxWidth: 560 } }, '脱敏演练说明（可选，最多 280 字）',
+              React.createElement('textarea', { 'aria-label': '脱敏演练说明', value: note, rows: 2, maxLength: 280,
+                onChange: (event) => setNote(event.target.value.slice(0, 280)),
+                style: { display: 'block', boxSizing: 'border-box', width: '100%', margin: '5px 0 8px' } })),
+            React.createElement('button', { type: 'button', style: button, disabled: !category,
+              onClick: () => {
+                if (!categories.some(([value]) => value === category)) return;
+                setOpinions([...opinions, { category, note: note.trim() }]);
+                setCategory(''); setNote(''); setSelectedUsage('');
+              } }, '记录本页演练意见')) : null));
+    }
+
 ${draftReviewClient}
     function WorkbenchPanel({ sessions }) {
       const [status, setStatus] = React.useState('未验证');
+      const [page, setPage] = React.useState('material');
+      const [pendingLocator, setPendingLocator] = React.useState('');
       React.useEffect(() => {
         let disposed = false;
         let timer;
@@ -767,20 +901,26 @@ ${draftReviewClient}
         style: { flex: '1 1 0', minHeight: 0, minWidth: 0, width: '100%', boxSizing: 'border-box', overflowY: 'auto', containerType: 'inline-size', padding: 'var(--dsh-frame-top-clearance, 48px) 12px 12px', background: '#f1f5f2' },
       },
         React.createElement('style', null, [
-          '.tkw-workspace { display: grid !important; grid-template-columns: 232px minmax(0, 1fr); }',
-          '.tkw-navigation button { width: 100%; font: inherit; font-size: 13px; min-height: 40px; }',
+          '.tkw-workspace { display: block !important; }',
+          '.tkw-topbar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 20px; min-width: 0; }',
+          '.tkw-navigation { display: flex; overflow-x: auto; flex: 1 1 360px; min-width: 0; box-sizing: border-box; }',
+          '.tkw-navigation button { flex: 1 0 auto; font: inherit; font-size: 13px; min-height: 40px; }',
+          '.tkw-navigation button:focus-visible { outline: 3px solid #65c9a9; outline-offset: -3px; }',
           '.tkw-sheet .tkw-content { min-width: 0; }',
           '.tkw-fact-reading { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }',
           '.tkw-fact-reading > * { min-width: 0; }',
           '@container tkw-review (max-width: 700px) { .tkw-fact-reading { grid-template-columns: minmax(0, 1fr) !important; } }',
+          '.tkw-usage-summary > div + div { border-left: 1px solid #e4ebe6; padding-left: 18px; }',
           '@container (max-width: 1000px) {',
           ' .tkw-source-layout { grid-template-columns: minmax(0, 1fr) !important; }',
+          ' .tkw-home-lower { grid-column: 1 / -1 !important; }',
+          ' .tkw-inbox-layout { grid-template-columns: minmax(0, 1fr) !important; }',
+          ' .tkw-usage-summary { grid-template-columns: minmax(0, 1fr) !important; }',
+          ' .tkw-usage-summary > div + div { border-left: 0; border-top: 1px solid #e4ebe6; padding-left: 0; padding-top: 12px; }',
           ' .tkw-step-navigation { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }',
           ' .tkw-step-navigation button:last-child { grid-column: 1 / -1; }',
           '}',
           '@container (max-width: 760px) {',
-          ' .tkw-workspace { grid-template-columns: minmax(0, 1fr); }',
-          ' .tkw-navigation { position: static !important; max-height: none !important; overflow-y: visible !important; padding: 14px 12px !important; border-radius: 12px 12px 0 0 !important; }',
           ' .tkw-sheet .tkw-content { padding: 18px 16px !important; }',
           '}',
           '@container (max-width: 420px) {',
@@ -788,26 +928,27 @@ ${draftReviewClient}
           '}',
         ].join('')),
         React.createElement('div', { className: 'tkw-sheet', style: { width: '100%', boxSizing: 'border-box', background: '#fff', border: '1px solid #e4ebe6', borderRadius: 12 } },
-          React.createElement('div', { className: 'tkw-workspace', style: { display: 'flex', flexWrap: 'wrap', alignItems: 'stretch' } },
-            React.createElement('nav', { 'aria-label': 'Workbench 五个并列入口', className: 'tkw-navigation', style: { flex: '1 1 232px', minWidth: 0, display: 'grid', alignContent: 'start', gap: 3, padding: '20px 12px', background: '#f1f5f2', position: 'sticky', alignSelf: 'start', top: 'var(--dsh-frame-top-clearance, 48px)', maxHeight: 'calc(100dvh - var(--dsh-frame-top-clearance, 48px) - 24px)', overflowY: 'auto', boxSizing: 'border-box', borderRadius: '12px 0 0 0' } },
-              React.createElement('div', { style: { padding: '0 12px 12px', overflowWrap: 'anywhere' } },
-                React.createElement('strong', { style: { display: 'block', fontSize: 14, lineHeight: 1.4 } }, 'Team Knowledge Workbench'),
-                React.createElement('small', { style: { display: 'block', marginTop: 3, color: '#687a70', fontSize: 11 } }, '团队知识复利工作台')),
-              ...['我的工作台', '提炼知识&经验', '打磨可复用的技能', '连接业务数据源', '团队业务资产大盘'].map((name, index) =>
-                React.createElement('button', {
-                  key: name, type: 'button', disabled: index !== 1, 'aria-current': index === 1 ? 'page' : undefined,
-                  style: { textAlign: 'left', padding: '10px 12px', borderRadius: 7, border: 0, fontSize: 13,
-                    background: index === 1 ? '#dfe8e1' : 'transparent', color: index === 1 ? '#202d29' : '#52615b',
-                    fontWeight: index === 1 ? 700 : 400, overflowWrap: 'anywhere' },
-                }, name, React.createElement('small', { style: { display: 'block', marginTop: 3, fontWeight: 400, color: '#687a70' } },
-                  index === 1 ? '当前入口' : '未开放')))),
-            React.createElement('div', { className: 'tkw-content', style: { flex: '4 1 480px', minWidth: 0, padding: 24, boxSizing: 'border-box' } }, React.createElement(SyntheticStage, null))),
-          webLoginUrl ? React.createElement('button', {
-            type: 'button',
-            'aria-label': '在浏览器打开 Workbench 登录',
-            style: { margin: '12px 16px', padding: '9px 12px', borderRadius: 6, border: '1px solid #cbd8d0', background: '#fff', color: '#245b43' },
-            onClick: () => window.open(webLoginUrl, '_blank', 'noopener,noreferrer'),
-          }, '在浏览器打开 Workbench 登录') : null,
+          React.createElement('div', { className: 'tkw-workspace' },
+            React.createElement('div', { className: 'tkw-topbar', style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 20px', padding: '8px 12px', background: '#f1f5f2', borderRadius: '12px 12px 0 0' } },
+              React.createElement('strong', { style: { flex: '0 0 auto', fontSize: 14, color: '#173d33', whiteSpace: 'nowrap', padding: '8px 4px' } }, '团队知识复利工作台'),
+              React.createElement('nav', { 'aria-label': 'Workbench 五个并列入口', className: 'tkw-navigation', style: { display: 'flex', overflowX: 'auto', flex: '1 1 360px', minWidth: 0, gap: 6 } },
+                ...[['我的', '我的工作台'], ['知识', '提炼知识&经验'], ['技能', '打磨可复用的技能'], ['工具', '连接业务数据源'], ['大盘', '团队业务资产大盘']].map(([label, name], index) =>
+                  React.createElement('button', {
+                    key: name, type: 'button', 'aria-label': name, title: name, disabled: index > 1, 'aria-current': index === (page === 'home' ? 0 : 1) ? 'page' : undefined,
+                    onClick: index < 2 ? () => setPage(index === 0 ? 'home' : 'material') : undefined,
+                    style: { flex: '1 0 auto', whiteSpace: 'nowrap', textAlign: 'center', padding: '8px 12px', borderRadius: 0, border: 0, borderBottom: index === (page === 'home' ? 0 : 1) ? '2px solid #176859' : '2px solid transparent', fontSize: 13,
+                      background: 'transparent', color: index === (page === 'home' ? 0 : 1) ? '#176859' : index < 2 ? '#202d29' : '#52615b',
+                      fontWeight: index === (page === 'home' ? 0 : 1) ? 700 : 400 },
+                  }, label)))),
+            webLoginUrl ? React.createElement('button', { type: 'button', 'aria-label': '在浏览器打开 Workbench 登录',
+              onClick: () => window.open(webLoginUrl, '_blank', 'noopener,noreferrer') }, '在浏览器打开 Workbench 登录') : null,
+            React.createElement('div', { className: 'tkw-content', style: { minWidth: 0, padding: 24, boxSizing: 'border-box' } },
+              React.createElement('div', { hidden: page !== 'home' },
+                React.createElement(LocalWorkbenchHome, {
+                  openMaterial: (locator) => { setPendingLocator(locator); setPage('material'); },
+                  clearLocator: () => setPendingLocator(''),
+                })),
+              React.createElement('div', { hidden: page !== 'material' }, React.createElement(SyntheticStage, { pendingLocator })))),
           React.createElement('details', { style: { margin: '0 16px 12px', padding: 12, border: '1px solid #e4ebe6', borderRadius: 8 } },
             React.createElement('summary', null, '技术信息'),
             React.createElement('p', null, panelId + ' · v${packageVersion}'),
@@ -883,6 +1024,7 @@ export const buildWorkbenchPackageInput = (
       throw new Error('backend endpoint must be a canonical loopback HTTP origin');
     }
   }
+
   if (input.webLoginUrl !== undefined) {
     let url: URL;
     try {
@@ -890,9 +1032,11 @@ export const buildWorkbenchPackageInput = (
     } catch {
       throw new Error('Web login URL must be a canonical HTTPS /auth URL');
     }
-    if (url.protocol !== 'https:' || !url.hostname || url.username || url.password
-      || url.pathname !== '/auth' || url.search || url.hash
-      || input.webLoginUrl !== `${url.origin}/auth`) {
+    if (
+      url.protocol !== 'https:' || !url.hostname || url.username || url.password ||
+      url.pathname !== '/auth' || url.search || url.hash ||
+      input.webLoginUrl !== `${url.origin}/auth`
+    ) {
       throw new Error('Web login URL must be a canonical HTTPS /auth URL');
     }
   }

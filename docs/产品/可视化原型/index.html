@@ -334,7 +334,6 @@
   .nav button:hover,.nav button.active,.nav-group.host .nav button.active { color:var(--ink); background:#dfe8e1; box-shadow:none; }
   .nav button.active { font-weight:700; }
   .rail-note { background:#e9f0ea; border:0; border-radius:7px; color:#42544a; font-size:12px; line-height:1.55; }
-  .menu-toggle { display:none; }
   .workspace { display:flex; flex-direction:column; min-height:100vh; }
   .top { flex:none; min-height:48px; padding:8px 30px; background:#f1f5f2; border:0; color:#34473e; font-size:12px; }
   .top .badge { background:#e2eae3; }
@@ -429,27 +428,43 @@
     .knowledge-item-list button { display:block; }
   }
   .toast { background:#273e32; font-size:13px; }
+  .app { display:block; background:#f1f5f2; }
+  .rail { min-height:0; padding:9px 24px; flex-direction:row; align-items:center; gap:18px; background:#f1f5f2; }
+  .brand { flex:none; padding:0; }
+  .rail-navigation { flex:1; min-width:0; display:flex; align-items:center; gap:16px; }
+  .nav-group.host { flex:none; }
+  .nav-group.workbench { flex:1; min-width:0; display:flex; align-items:center; gap:20px; }
+  .workbench-title { flex:none; font-size:14px; color:#173d33; white-space:nowrap; }
+  .nav-group.workbench .section-label,.nav-group.workbench .nav-hint,.nav-group.host .section-label,.nav-group.host .nav-hint { display:none; }
+  .nav-group.host .nav { display:flex; }
+  .nav-group.host .nav button { width:auto; white-space:nowrap; }
+  .nav-group.workbench .nav { display:flex; overflow-x:auto; flex:1; min-width:0; }
+  .nav-group.workbench .nav button { flex:1 0 auto; width:auto; text-align:center; white-space:nowrap; border-radius:0; border-bottom:2px solid transparent; }
+  .nav-group.workbench .nav button.active { box-shadow:none; border-bottom-color:#176859; background:transparent; color:#176859; }
+  .rail-note { display:none; }
+  .workspace { min-height:calc(100vh - 58px); }
+  .top { min-height:40px; }
+  .banner { margin:0 8px; border-radius:8px 8px 0 0; }
+  main { width:calc(100% - 16px); margin:0 8px 8px; }
   @media(max-width:1100px) {
-    .app { display:block; }
-    .rail { position:sticky; top:0; z-index:12; min-height:48px; height:48px; flex-direction:row; align-items:center; justify-content:space-between; padding:5px 16px; gap:12px; }
-    .brand { padding:0; margin:0; }
-    .brand .tiny { font-size:11px; }
-    .menu-toggle { display:inline-flex; justify-content:center; align-items:center; min-width:62px; min-height:44px; padding:0 9px; border:1px solid #bfcfc4; border-radius:6px; background:#fff; color:var(--ink); font-size:13px; font-weight:650; }
-    .rail-navigation { display:none; position:absolute; top:48px; left:0; right:0; max-height:calc(100dvh - 48px); overflow:auto; padding:14px 16px 18px; background:#f1f5f2; border-bottom:1px solid #d2ded5; box-shadow:0 12px 22px rgba(26,48,36,.12); }
-    .rail.menu-open .rail-navigation { display:grid; }
-    .rail .nav { display:grid; overflow:visible; }
-    .rail .nav button { width:100%; white-space:normal; min-height:44px; }
-    .rail .section-label { display:block; }
-    .rail .rail-note { display:none; }
-    .workspace { min-height:calc(100vh - 48px); }
-    .top { min-height:40px; padding:6px 20px; }
+    .rail { position:static; min-height:0; height:auto; padding:9px 16px; gap:12px; }
+    .brand { display:none; }
+    .rail-navigation { display:flex; position:static; max-height:none; overflow:visible; padding:0; background:transparent; border:0; box-shadow:none; gap:10px; }
+    .rail .nav { display:flex; overflow-x:auto; }
+    .rail .nav button { width:auto; white-space:nowrap; min-height:40px; }
+    .rail .section-label,.rail .nav-hint { display:none; }
+    .workspace { min-height:calc(100vh - 58px); }
+    .top { padding:6px 20px; }
     .banner { padding:8px 20px; }
     main { padding:23px 20px 42px; }
   }
   @media(max-width:760px) {
-    .rail { padding:5px 16px; }
-    .rail-navigation { padding:12px 16px 18px; }
-    .nav-hint { padding:0 12px 8px; }
+    .rail { padding:8px 12px; flex-wrap:wrap; gap:4px; }
+    .rail-navigation { padding:0; flex-wrap:wrap; gap:4px; }
+    .nav-group.workbench { flex-basis:100%; flex-wrap:wrap; gap:4px; }
+    .nav-group.workbench .nav { flex-basis:100%; }
+    .nav-group.host .nav button { padding:8px; }
+    .nav-group.workbench .nav button { padding:8px 10px; }
     .top { padding:7px 16px; gap:6px; font-size:12px; }
     .top .badge { display:none; }
     .banner { margin:0; padding:8px 16px; border-radius:0; border-left:0; border-right:0; }
@@ -482,10 +497,9 @@
 <div class="app">
   <aside class="rail" aria-label="宿主示意与 Team Knowledge Workbench 导航">
     <div class="brand"><div class="logo" aria-hidden="true"></div><div>DeepSeek Harness<br><span class="muted tiny">Desktop · 概念示意</span></div></div>
-    <button class="menu-toggle" type="button" aria-controls="rail-navigation" aria-expanded="false">导航</button>
     <div class="rail-navigation" id="rail-navigation">
       <div class="nav-group host"><div class="section-label">DSH Desktop · 宿主示意</div><div class="nav-hint">原生对话不属于 Workbench</div><nav class="nav" aria-label="DSH 宿主示意"><button data-route="task">原生对话 · 示意</button></nav></div>
-      <div class="nav-group workbench"><div class="section-label">Team Knowledge Workbench</div><div class="nav-hint">团队知识复利工作台</div><nav class="nav" aria-label="Workbench 五个入口"><button data-route="home">我的工作台</button><button data-route="knowledge">提炼知识&amp;经验</button><button data-route="skill">打磨可复用的技能</button><button data-route="tools">连接业务数据源</button><button data-route="assets">团队业务资产大盘</button></nav></div>
+      <div class="nav-group workbench"><div class="section-label">Team Knowledge Workbench</div><div class="nav-hint">团队知识复利工作台</div><strong class="workbench-title">团队知识复利工作台</strong><nav class="nav" aria-label="Workbench 五个入口"><button data-route="home" title="我的工作台" aria-label="我的工作台">我的</button><button data-route="knowledge" title="提炼知识&amp;经验" aria-label="提炼知识&amp;经验">知识</button><button data-route="skill" title="打磨可复用的技能" aria-label="打磨可复用的技能">技能</button><button data-route="tools" title="连接业务数据源" aria-label="连接业务数据源">工具</button><button data-route="assets" title="团队业务资产大盘" aria-label="团队业务资产大盘">大盘</button></nav></div>
     </div>
     <div class="rail-note">五个 Workbench 入口按问题选择，不是必走流程；原生对话属于宿主。这里只演示固定虚构内容，未连接业务数据源或正式发布。</div>
   </aside>
@@ -504,16 +518,6 @@
     recapStage:'idle', recapReviewed:false, recapReuse:'pending', recapAction:'pending', recapArtifact:'pending', recapCorrection:'', handoff:'', candidateDrafts:{knowledge:'',skill:'',source:'',fact:''}, candidateSubmitted:{knowledge:false,skill:false,source:false,fact:false}, knowledgeStep:'import', knowledgeOrigin:'', knowledgeFileName:'', knowledgeImportError:'', knowledgeImportRevision:0, knowledgeMatched:false, knowledgeIssue:null, knowledgeFactFocus:'a-test', knowledgeSourceSection:0, knowledgeFactSection:0, knowledgeFactFeedback:{}, knowledgeFactReply:null, knowledgeFactReplyText:'', knowledgeExperienceFeedback:{}, knowledgeTreeFocus:'source', knowledgeSkillSkipped:false, knowledgeEvidenceOpen:false, knowledgeActionChoices:{}, knowledgeReviews:{}, knowledgeFactComments:{}, knowledgeFactDrafts:{}, knowledgeGenerationRevision:0, knowledgeCommentTarget:null, knowledgeCommentSelection:null, knowledgeCommentDraft:'', knowledgeEditIssue:null, knowledgeEditDraft:'', knowledgePublishIntent:'', legacyOpen:false, skillStep:'entry', skillOrigin:'external', skillContext:'direct', skillAssetReference:null, skillPendingInput:null, skillPriorImport:null, skillImportedVersion:'original', skillEntryOrigin:'external', skillEntryDelivery:'locator', skillEntrySource:'', skillEntryVersion:'', skillTeamSearch:'', skillPreviousRun:null, skillIntake:{source:'',version:'',task:'',input:'',output:'',trigger:'',stop:'',dependency:'',environment:'',owner:'',evidence:''}, skillDelivery:'locator', skillPackage:'none', skillLocalPaths:[], skillLocalCount:0, skillLocalOverflow:false, skillDraftNote:'', skillDraftApplied:'', skillDraftRevision:0, skillDraftSequence:0, skillDraftFile:'SKILL.md', skillDraftPackage:null, skillRun:null, skillCase:'normal', skillReleaseExample:'idle', objectFocus:'project', assetTab:'progress', assetOverviewFocus:'all', assetDetail:null, diagnosticDisposition:{}
   };
   const root=document.getElementById('content');
-  const rail=document.querySelector('.rail');
-  const menuToggle=document.querySelector('.menu-toggle');
-  const closeMenu=()=>{ rail.classList.remove('menu-open'); menuToggle.setAttribute('aria-expanded','false'); };
-  menuToggle.addEventListener('click',()=>{
-    const open=rail.classList.toggle('menu-open');
-    menuToggle.setAttribute('aria-expanded',String(open));
-  });
-  document.addEventListener('keydown',event=>{ if(event.key==='Escape'&&rail.classList.contains('menu-open')) { closeMenu(); menuToggle.focus(); } });
-  document.addEventListener('click',event=>{ if(rail.classList.contains('menu-open')&&!rail.contains(event.target)) closeMenu(); });
-  window.matchMedia('(min-width: 1101px)').addEventListener('change',event=>{ if(event.matches) closeMenu(); });
   const escapeHTML=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const btn=(label,action,style='secondary',attr='')=>`<button class="btn ${style}" data-action="${action}" ${attr}>${label}</button>`;
   const link=(label,route)=>`<button class="btn text" data-route="${route}">${label} →</button>`;
@@ -1369,7 +1373,7 @@ eof
     document.getElementById('breadcrumb').textContent=names[state.route];
     document.getElementById('host-label').textContent=state.route==='task'?'DeepSeek Harness Desktop · 宿主示意':'Team Knowledge Workbench';
     document.getElementById('space-label').textContent=state.authorized?'演示团队 · team-asset':'模拟未绑定';
-    document.querySelectorAll('.rail [data-route]').forEach(el=>el.classList.toggle('active',el.dataset.route===state.route||(['object','record'].includes(state.route)&&el.dataset.route==='home')||(['discussion','proposal','review'].includes(state.route)&&el.dataset.route==='knowledge')||(state.route==='map'&&el.dataset.route==='assets')));
+    document.querySelectorAll('.rail [data-route]').forEach(el=>{ const active=el.dataset.route===state.route||(['object','record'].includes(state.route)&&el.dataset.route==='home')||(['discussion','proposal','review'].includes(state.route)&&el.dataset.route==='knowledge')||(state.route==='map'&&el.dataset.route==='assets'); el.classList.toggle('active',active); if(active) el.setAttribute('aria-current','page'); else el.removeAttribute('aria-current'); });
     root.innerHTML=views[state.route]();
   }
   function setAnchor(container,text) {
@@ -1484,7 +1488,7 @@ eof
   document.addEventListener('click',event=>{
     const el=event.target.closest('[data-route],[data-action],[data-point]'); if(!el || el.disabled) return;
     if(!state.authorized && !['home','task'].includes(el.dataset.route) && el.dataset.route) { note('演示空间未绑定，不能访问项目、来源或内容详情。'); return; }
-    if(el.dataset.route) { closeMenu(); const from=state.route; if(from==='knowledge'&&el.dataset.route!=='knowledge') knowledgeLeave(); if(from==='home'&&el.dataset.route!=='home') { state.homeSelected=null; state.feedbackCategory=''; state.feedbackDraft=''; } if(el.dataset.inboxId&&el.dataset.route==='knowledge'&&state.authorized) { const item=state.inboxItems.find(entry=>entry.id===el.dataset.inboxId); if(!item) return; state.inboxHandoff={id:item.id,title:item.title,locator:item.locator}; state.knowledgeStep='import'; } else if(el.dataset.route==='knowledge') state.inboxHandoff=null; state.route=el.dataset.route; if(state.route==='skill') enterSkill(el.dataset.skillContext||'direct'); if(state.route==='assets') state.assetDetail=null; if(state.route==='knowledge'&&el.dataset.knowledgeTarget==='legacy') { state.knowledgeStep='import'; state.knowledgeIssue=null; state.legacyOpen=true; } else if(state.route==='knowledge'&&['discussion','proposal','review'].includes(from)) { state.knowledgeStep='intake'; } if(state.route==='tools') { state.toolTab='available'; state.selectedTool=null; state.toolDomain='all'; state.toolSearch=''; state.toolSearchDraft=''; state.toolTestInput=''; state.toolTestResult=null; } render(); root.focus(); if(state.route==='knowledge'&&el.dataset.knowledgeTarget==='legacy') root.querySelector('[data-legacy-knowledge] summary')?.focus(); return; }
+    if(el.dataset.route) { const from=state.route; if(from==='knowledge'&&el.dataset.route!=='knowledge') knowledgeLeave(); if(from==='home'&&el.dataset.route!=='home') { state.homeSelected=null; state.feedbackCategory=''; state.feedbackDraft=''; } if(el.dataset.inboxId&&el.dataset.route==='knowledge'&&state.authorized) { const item=state.inboxItems.find(entry=>entry.id===el.dataset.inboxId); if(!item) return; state.inboxHandoff={id:item.id,title:item.title,locator:item.locator}; state.knowledgeStep='import'; } else if(el.dataset.route==='knowledge') state.inboxHandoff=null; state.route=el.dataset.route; if(state.route==='skill') enterSkill(el.dataset.skillContext||'direct'); if(state.route==='assets') state.assetDetail=null; if(state.route==='knowledge'&&el.dataset.knowledgeTarget==='legacy') { state.knowledgeStep='import'; state.knowledgeIssue=null; state.legacyOpen=true; } else if(state.route==='knowledge'&&['discussion','proposal','review'].includes(from)) { state.knowledgeStep='intake'; } if(state.route==='tools') { state.toolTab='available'; state.selectedTool=null; state.toolDomain='all'; state.toolSearch=''; state.toolSearchDraft=''; state.toolTestInput=''; state.toolTestResult=null; } render(); root.focus(); if(state.route==='knowledge'&&el.dataset.knowledgeTarget==='legacy') root.querySelector('[data-legacy-knowledge] summary')?.focus(); return; }
     if(el.dataset.point) { state.mapPoint=el.dataset.point; render(); root.focus(); return; }
     const action=el.dataset.action;
     if(action==='inbox-handoff-dismiss') { if(state.route!=='knowledge'||!state.authorized) return; state.inboxHandoff=null; render(); root.focus(); return; }
